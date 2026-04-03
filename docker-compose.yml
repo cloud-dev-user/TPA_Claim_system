@@ -1,0 +1,432 @@
+
+# ─────────────────────────────────────────────
+#  MD India Claims Processing Pipeline
+#  Full local stack: Kafka · Redis · APISIX · Postgres · Prometheus · Grafana
+# ─────────────────────────────────────────────
+
+networks:
+  md-india-net:
+    driver: bridge
+
+volumes:
+  zookeeper_data:
+  kafka_data:
+  redis_data:
+  etcd_data:
+  apisix_data:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  # ── Zookeeper ──────────────────────────────
+  zookeeper:
+    image: public.ecr.aws/bitnami/zookeeper:3.9
+    container_name: md-zookeeper
+    networks: [md-india-net]
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOO_PORT_NUMBER: "2181"
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+    healthcheck:
+      test: ["CMD", "zkServer.sh", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka Broker (Zookeeper mode, pinned to 3.6) ─
+  kafka:
+    image: public.ecr.aws/bitnami/kafka:3.6
+    container_name: md-kafka
+    networks: [md-india-net]
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,EXTERNAL://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:9093"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CFG_NUM_PARTITIONS: "3"
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_LOG_RETENTION_HOURS: "168"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── Kafka Topic Init ───────────────────────
+  kafka-init:
+    image: public.ecr.aws/bitnami/kafka:3.6
+    container_name: md-kafka-init
+    networks: [md-india-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - |
+        echo 'Creating Kafka topics...'
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic claim-events --partitions 3 --replication-factor 1 --config retention.ms=604800000
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic audit-log --partitions 1 --replication-factor 1 --config retention.ms=604800000
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic eligibility-results --partitions 3 --replication-factor 1 --config retention.ms=86400000
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic fraud-alerts --partitions 3 --replication-factor 1 --config retention.ms=604800000
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic claim-events.DLT --partitions 1 --replication-factor 1 --config retention.ms=604800000
+        echo 'Topics created:'
+        /opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+
+  # ── Redis ──────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: md-redis
+    networks: [md-india-net]
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --loglevel notice
+      --requirepass md-india-redis-2026
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "md-india-redis-2026", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis Seed Data ────────────────────────
+  redis-init:
+    image: redis:7.2-alpine
+    container_name: md-redis-init
+    networks: [md-india-net]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - |
+        echo 'Seeding Redis with MD India reference data...'
+        redis-cli -h redis -a md-india-redis-2026 HSET member:M1001:policy name 'Anita Sharma' plan 'Gold Family Floater' limit 1000000 used 230000 renewal '2027-03-31' insurer 'StarHealth'
+        redis-cli -h redis -a md-india-redis-2026 EXPIRE member:M1001:policy 900
+        redis-cli -h redis -a md-india-redis-2026 HSET member:M1002:policy name 'Rajesh Kumar' plan 'Silver Individual' limit 500000 used 50000 renewal '2027-06-30' insurer 'HDFCErgo'
+        redis-cli -h redis -a md-india-redis-2026 EXPIRE member:M1002:policy 900
+        redis-cli -h redis -a md-india-redis-2026 HSET member:M1003:policy name 'Priya Patel' plan 'Platinum Family' limit 2000000 used 0 renewal '2027-12-31' insurer 'ICICILombard'
+        redis-cli -h redis -a md-india-redis-2026 EXPIRE member:M1003:policy 900
+        redis-cli -h redis -a md-india-redis-2026 SADD empanelled:mumbai Apollo Fortis Kokilaben Max Lilavati Breach_Candy
+        redis-cli -h redis -a md-india-redis-2026 SADD empanelled:delhi Apollo Fortis Max AIIMS_Private Medanta
+        redis-cli -h redis -a md-india-redis-2026 SADD empanelled:bangalore Apollo Fortis Manipal Narayana Sakra
+        redis-cli -h redis -a md-india-redis-2026 SADD empanelled:chennai Apollo Fortis MIOT Gleneagles Sri_Ramachandra
+        redis-cli -h redis -a md-india-redis-2026 ZADD fraud:hospital:scores 5 H5501-Apollo
+        redis-cli -h redis -a md-india-redis-2026 ZADD fraud:hospital:scores 2 H5502-Fortis
+        redis-cli -h redis -a md-india-redis-2026 ZADD fraud:hospital:scores 0 H5503-Kokilaben
+        echo 'Redis seeding complete.'
+        redis-cli -h redis -a md-india-redis-2026 DBSIZE
+
+  # ── PostgreSQL ─────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: md-postgres
+    networks: [md-india-net]
+    environment:
+      POSTGRES_DB: mdindia
+      POSTGRES_USER: mdindia
+      POSTGRES_PASSWORD: mdindia2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mdindia -d mdindia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── etcd (for APISIX control plane) ────────
+  etcd:
+    image: public.ecr.aws/bitnami/etcd:3.5
+    container_name: md-etcd
+    networks: [md-india-net]
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://etcd:2379"
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+    ports:
+      - "2379:2379"
+    volumes:
+      - etcd_data:/bitnami/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Apache APISIX ──────────────────────────
+  apisix:
+    image: apache/apisix:3.8.0-debian
+    container_name: md-apisix
+    networks: [md-india-net]
+    depends_on:
+      etcd:
+        condition: service_healthy
+    volumes:
+      - ./apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./certs:/etc/apisix/ssl:ro
+    ports:
+      - "9080:9080"   # HTTP gateway
+      - "9443:9443"   # HTTPS gateway
+      - "9180:9180"   # Admin API
+      - "9091:9091"   # Prometheus metrics
+    environment:
+      APISIX_STAND_ALONE: "false"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9180/apisix/admin/routes", "-H", "X-API-KEY: edd1c9f034335f136f87ad84b625c8f1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ── APISIX Dashboard ───────────────────────
+  apisix-dashboard:
+    image: apache/apisix-dashboard:3.0.0-alpine
+    container_name: md-apisix-dashboard
+    networks: [md-india-net]
+    depends_on:
+      - etcd
+    volumes:
+      - ./apisix/dashboard.yaml:/usr/local/apisix-dashboard/conf/conf.yaml:ro
+    ports:
+      - "9000:9000"
+
+  # ── Kafka UI ────────────────────────────────
+  # Visual browser for topics, partitions, consumer groups, messages
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    container_name: md-kafka-ui
+    networks: [md-india-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "md-india-local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zookeeper:2181"
+      DYNAMIC_CONFIG_ENABLED: "true"
+      SERVER_SERVLET_CONTEXT_PATH: "/kafka-ui"
+    ports:
+      - "8090:8080"
+
+  # ── Prometheus ─────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: md-prometheus
+    networks: [md-india-net]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.external-url=https://localhost:9443/prometheus/'
+      - '--web.route-prefix=/'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - apisix
+
+  # ── Grafana ────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: md-grafana
+    networks: [md-india-net]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: mdindia2026
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "https://localhost:9443/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  # ── RedisInsight ────────────────────────────
+  # Visual browser for Redis keys, data structures, memory usage
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: md-redisinsight
+    networks: [md-india-net]
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "5540:5540"
+
+  # ── Claim Service (Instance 1) ─────────────
+  claim-service-1:
+    build:
+      context: ./claim-service-java
+      dockerfile: Dockerfile
+    container_name: md-claim-service-1
+    networks: [md-india-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_INSTANCE: "claim-service-1"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "md-india-redis-2026"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/mdindia"
+      SPRING_DATASOURCE_USERNAME: "mdindia"
+      SPRING_DATASOURCE_PASSWORD: "mdindia2026"
+      SERVER_PORT: "8080"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ── Claim Service (Instance 2 – for LB demo) ─
+  claim-service-2:
+    build:
+      context: ./claim-service-java
+      dockerfile: Dockerfile
+    container_name: md-claim-service-2
+    networks: [md-india-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_INSTANCE: "claim-service-2"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "md-india-redis-2026"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/mdindia"
+      SPRING_DATASOURCE_USERNAME: "mdindia"
+      SPRING_DATASOURCE_PASSWORD: "mdindia2026"
+      SERVER_PORT: "8081"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ── Eligibility Service ────────────────────
+  eligibility-service:
+    build:
+      context: ./eligibility-service-java
+      dockerfile: Dockerfile
+    container_name: md-eligibility-service
+    networks: [md-india-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_CONSUMER_GROUP: "eligibility-consumers"
+      KAFKA_INPUT_TOPIC: "claim-events"
+      KAFKA_OUTPUT_TOPIC: "eligibility-results"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "md-india-redis-2026"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ── Fraud Service ──────────────────────────
+  fraud-service:
+    build:
+      context: ./fraud-service-java
+      dockerfile: Dockerfile
+    container_name: md-fraud-service
+    networks: [md-india-net]
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_CONSUMER_GROUP: "fraud-consumers"
+      KAFKA_INPUT_TOPIC: "claim-events"
+      KAFKA_OUTPUT_TOPIC: "fraud-alerts"
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: "md-india-redis-2026"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          memory: 256M

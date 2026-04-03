@@ -1,0 +1,52 @@
+server:
+  shutdown: graceful
+
+spring:
+  application:
+    name: fraud-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:0}
+      password: ${REDIS_PASSWORD:}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:fraud-consumers}
+      auto-offset-reset: ${KAFKA_AUTO_OFFSET_RESET:earliest}
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+
+app:
+  kafka:
+    input-topic: ${KAFKA_INPUT_TOPIC:claim-events}
+    output-topic: ${KAFKA_OUTPUT_TOPIC:fraud-alerts}
+    audit-topic: ${KAFKA_AUDIT_TOPIC:audit-log}
+  fraud:
+    score-threshold: ${FRAUD_SCORE_THRESHOLD:50}
+    high-amount-threshold: ${HIGH_AMOUNT_THRESHOLD:500000}
+    daily-claim-limit: ${DAILY_CLAIM_LIMIT:5}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+logging:
+  level:
+    com.mdindia: ${LOG_LEVEL:INFO}

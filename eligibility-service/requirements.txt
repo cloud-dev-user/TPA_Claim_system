@@ -1,0 +1,6 @@
+confluent-kafka==2.4.0
+redis==5.0.4
+
+# Dev / test
+pytest==8.2.0
+flake8==7.0.0

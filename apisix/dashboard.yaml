@@ -1,0 +1,19 @@
+# APISIX Dashboard configuration
+conf:
+  listen:
+    host: 0.0.0.0
+    port: 9000
+  etcd:
+    endpoints:
+      - etcd:2379
+  log:
+    error_log:
+      level: warn
+      file_path: /usr/local/apisix-dashboard/logs/error.log
+
+authentication:
+  secret: md-india-dashboard-secret-2026
+  expire_time: 3600
+  users:
+    - username: admin
+      password: mdindiaadmin

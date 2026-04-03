@@ -1,0 +1,25 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  - job_name: 'apisix'
+    static_configs:
+      - targets: ['apisix:9091']
+    metrics_path: /apisix/prometheus/metrics
+
+  - job_name: 'claim-service'
+    static_configs:
+      - targets: ['claim-service-1:8080', 'claim-service-2:8081']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'eligibility-service'
+    static_configs:
+      - targets: ['eligibility-service:8080']
+    metrics_path: /actuator/prometheus
+
+  - job_name: 'fraud-service'
+    static_configs:
+      - targets: ['fraud-service:8080']
+    metrics_path: /actuator/prometheus
