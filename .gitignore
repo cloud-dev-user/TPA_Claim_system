@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────
+#  HealthOne TPA — .gitignore
+# ─────────────────────────────────────────────
+
+# ── Maven build output ────────────────────────
+target/
+*.jar
+*.war
+*.ear
+*.class
+
+# ── Python ───────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── TLS certificates & private keys ──────────
+# Never commit private keys or certificates — regenerate locally
+certs/server.key
+certs/server.crt
+certs/*.key
+certs/*.crt
+certs/*.pem
+*.p12
+*.pfx
+
+# ── IDE / Editor ─────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/*
+!.vscode/settings.json
+
+# ── OneNote artefacts ─────────────────────────
+*.onetoc2
+Open Notebook.onetoc2
+
+# ── Claude Code internal data ─────────────────
+.claude/
+
+# ── OS ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ── Docker local runtime data ─────────────────
+# Named volumes are managed by Docker — don't commit data dumps
+*.sql.bak
+
+# ── Logs ─────────────────────────────────────
+logs/
+*.log
