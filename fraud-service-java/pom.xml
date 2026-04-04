@@ -12,11 +12,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.mdindia</groupId>
+    <groupId>com.healthonetpa</groupId>
     <artifactId>fraud-service</artifactId>
     <version>1.0.0</version>
     <name>fraud-service</name>
-    <description>MD India Fraud Detection Service</description>
+    <description>HealthOne TPA Fraud Detection Service</description>
 
     <properties>
         <java.version>17</java.version>

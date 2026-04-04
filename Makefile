@@ -1,12 +1,12 @@
 # ──────────────────────────────────────────────────────────────────────────────
-#  MD India Claims Pipeline — Local Development Makefile
+#  HealthOne TPA Claims Pipeline — Local Development Makefile
 # ──────────────────────────────────────────────────────────────────────────────
 
 .PHONY: help up down build test logs status clean setup-apisix kafka-topics redis-seed
 
 COMPOSE = docker-compose
-KAFKA   = docker exec md-kafka kafka-topics.sh --bootstrap-server localhost:9092
-REDIS   = docker exec md-redis redis-cli
+KAFKA   = docker exec healthone-kafka kafka-topics.sh --bootstrap-server localhost:9092
+REDIS   = docker exec healthone-redis redis-cli
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -56,33 +56,33 @@ kafka-describe: ## Describe claim-events topic
 	$(KAFKA) --describe --topic claim-events
 
 kafka-produce: ## Open an interactive producer for claim-events
-	docker exec -it md-kafka kafka-console-producer.sh \
+	docker exec -it healthone-kafka kafka-console-producer.sh \
 	  --bootstrap-server localhost:9092 \
 	  --topic claim-events \
 	  --property parse.key=true \
 	  --property key.separator=:
 
 kafka-consume-claims: ## Consume claim-events from the beginning
-	docker exec -it md-kafka kafka-console-consumer.sh \
+	docker exec -it healthone-kafka kafka-console-consumer.sh \
 	  --bootstrap-server localhost:9092 \
 	  --topic claim-events \
 	  --from-beginning \
 	  --group replay-audit
 
 kafka-consume-eligibility: ## Consume eligibility results
-	docker exec -it md-kafka kafka-console-consumer.sh \
+	docker exec -it healthone-kafka kafka-console-consumer.sh \
 	  --bootstrap-server localhost:9092 \
 	  --topic eligibility-results \
 	  --from-beginning
 
 kafka-consume-fraud: ## Consume fraud alerts
-	docker exec -it md-kafka kafka-console-consumer.sh \
+	docker exec -it healthone-kafka kafka-console-consumer.sh \
 	  --bootstrap-server localhost:9092 \
 	  --topic fraud-alerts \
 	  --from-beginning
 
 kafka-consumer-groups: ## Show all consumer group offsets and lag
-	docker exec md-kafka kafka-consumer-groups.sh \
+	docker exec healthone-kafka kafka-consumer-groups.sh \
 	  --bootstrap-server localhost:9092 \
 	  --describe \
 	  --all-groups
@@ -93,9 +93,9 @@ kafka-audit-retention: ## Set audit-log retention to 7 days
 # ── Redis operations ───────────────────────────────────────────────────────────
 
 redis-cli: ## Open a Redis CLI session
-	docker exec -it md-redis redis-cli
+	docker exec -it healthone-redis redis-cli
 
-redis-seed: ## Re-seed Redis with MD India reference data
+redis-seed: ## Re-seed Redis with HealthOne TPA reference data
 	$(COMPOSE) restart redis-init
 
 redis-policy: ## View member M1001 policy (example)

@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-#  MD India · Claim Service CI Pipeline
+#  HealthOne TPA · Claim Service CI Pipeline
 #  Runs on every push to any branch; merge to main requires both stages green.
 # ──────────────────────────────────────────────────────────────────────────────
 

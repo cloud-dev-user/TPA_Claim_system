@@ -12,11 +12,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.mdindia</groupId>
+    <groupId>com.healthonetpa</groupId>
     <artifactId>eligibility-service</artifactId>
     <version>1.0.0</version>
     <name>eligibility-service</name>
-    <description>MD India Eligibility Check Service</description>
+    <description>HealthOne TPA Eligibility Check Service</description>
 
     <properties>
         <java.version>17</java.version>

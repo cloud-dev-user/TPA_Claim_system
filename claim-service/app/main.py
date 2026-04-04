@@ -1,5 +1,5 @@
 """
-MD India Claim Service — FastAPI application.
+HealthOne TPA Claim Service — FastAPI application.
 
 Endpoints:
   POST /api/v1/claims   Submit a new claim
@@ -46,7 +46,7 @@ redis_client = redis.Redis(
 # ── Pydantic request/response schemas ─────────────────────────────────────────
 
 class ClaimRequest(BaseModel):
-    member_id:      str = Field(..., example="M1001", description="MD India member ID")
+    member_id:      str = Field(..., example="M1001", description="HealthOne TPA member ID")
     hospital_id:    str = Field(..., example="H5501-Apollo")
     hospital_name:  str = Field(..., example="Apollo Hospital Mumbai")
     insurer:        str = Field(..., example="StarHealth")
@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="MD India Claim Service",
+    title="HealthOne TPA Claim Service",
     description="Receives claim submissions, validates them, and publishes to Kafka.",
     version="1.0.0",
     lifespan=lifespan,
@@ -109,9 +109,9 @@ validator = ClaimValidator()
     summary="Submit a new insurance claim",
 )
 async def submit_claim(request: ClaimRequest):
-    """Submit a new claim into the MD India processing pipeline.
+    """Submit a new claim into the HealthOne TPA processing pipeline.
 
-    1. Validates all fields against MD India business rules.
+    1. Validates all fields against HealthOne TPA business rules.
     2. Stores initial status in Redis (TTL 24h).
     3. Publishes a claim event to Kafka (key = insurer for partition ordering).
     4. Returns 202 Accepted — async processing continues downstream.

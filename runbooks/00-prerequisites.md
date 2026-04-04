@@ -7,7 +7,7 @@
 
 ## What You Are Setting Up
 
-A fully local environment that mirrors the MD India production stack:
+A fully local environment that mirrors the HealthOne TPA production stack:
 
 | Component | Purpose | Port |
 |-----------|---------|------|
@@ -58,7 +58,7 @@ Windows: comes with Git Bash or install via `winget install curl.curl`
 
 ## 2. Clone / Copy the Training Code
 
-> Your trainer will provide access to the GitLab group `md-india-claims`.  
+> Your trainer will provide access to the GitLab group `healthone-tpa-claims`.  
 > For Day 1, use the local copy at your workstation.
 
 ```bash
@@ -125,7 +125,7 @@ All containers should show `healthy` or `running`. Then run:
 
 ```bash
 # Kafka: list topics
-docker exec md-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+docker exec healthone-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
 # Expected output:
 # audit-log
 # claim-events
@@ -133,11 +133,11 @@ docker exec md-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
 # fraud-alerts
 
 # Redis: ping
-docker exec md-redis redis-cli PING
+docker exec healthone-redis redis-cli PING
 # Expected: PONG
 
 # Redis: check seed data
-docker exec md-redis redis-cli HGETALL member:M1001:policy
+docker exec healthone-redis redis-cli HGETALL member:M1001:policy
 
 # Claim service health
 curl http://localhost:8080/health
@@ -202,7 +202,7 @@ Expected response (HTTP 202):
 | Service | URL |
 |---------|-----|
 | Claim Service API docs | http://localhost:8080/docs |
-| APISIX Dashboard | http://localhost:9000 (admin / mdindiaadmin) |
+| APISIX Dashboard | http://localhost:9000 (admin / healthonetpaadmin) |
 | APISIX Prometheus metrics | http://localhost:9091/apisix/prometheus/metrics |
 
 ---

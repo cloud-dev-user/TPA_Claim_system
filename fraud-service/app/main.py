@@ -1,5 +1,5 @@
 """
-MD India Fraud Service — Kafka consumer loop.
+HealthOne TPA Fraud Service — Kafka consumer loop.
 
 Consumer group: fraud-consumers
 Input topic:    claim-events

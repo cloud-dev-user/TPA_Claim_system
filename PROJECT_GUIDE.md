@@ -1,4 +1,4 @@
-# MD India Claims Processing Pipeline — Project Guide
+# HealthOne TPA Claims Processing Pipeline — Project Guide
 
 > A complete reference for developers joining this project.  
 > Covers: why it exists, how it works, every component, data flows, and how to develop against it.
@@ -29,7 +29,7 @@
 
 ## 1. The Problem
 
-MD India is a **Third Party Administrator (TPA)** — the company that sits between hospitals, patients, and insurance companies. When a patient walks into a hospital for cashless treatment, the hospital submits a claim to MD India. MD India then:
+HealthOne TPA is a **Third Party Administrator (TPA)** — the company that sits between hospitals, patients, and insurance companies. When a patient walks into a hospital for cashless treatment, the hospital submits a claim to HealthOne TPA. HealthOne TPA then:
 
 1. Checks if the hospital is empanelled (authorised for cashless settlement)
 2. Verifies the patient's insurance policy has sufficient remaining limit
@@ -80,7 +80,7 @@ Hospital → APISIX Gateway → Claim Service → Kafka → Eligibility Service
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        MD India Claims Pipeline                      │
+│                        HealthOne TPA Claims Pipeline                      │
 │                                                                      │
 │  ┌──────────┐    ┌──────────────┐    ┌──────────────────────────┐   │
 │  │ Hospital │───▶│ Apache APISIX│───▶│     Claim Service        │   │
@@ -467,10 +467,10 @@ bash apisix/setup-apisix.sh
 ### Verify everything works
 ```bash
 # Kafka: topics should be listed
-docker exec md-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+docker exec healthone-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
 
 # Redis: should return PONG
-docker exec md-redis redis-cli PING
+docker exec healthone-redis redis-cli PING
 
 # Claim Service: should return {"status":"ok"}
 curl http://localhost:8080/health
@@ -525,7 +525,7 @@ make test-all
 |----|-----|-------------|-----------|
 | **Kafka UI** | http://localhost:8090 | None | Browse topics, see messages, check consumer lag |
 | **RedisInsight** | http://localhost:5540 | None (add DB: host=`redis`, port=`6379`) | Browse all Redis keys, inspect Hashes/Sets/Sorted Sets |
-| **APISIX Dashboard** | http://localhost:9000 | admin / mdindiaadmin | View/edit routes, upstreams, consumers, plugins |
+| **APISIX Dashboard** | http://localhost:9000 | admin / healthonetpaadmin | View/edit routes, upstreams, consumers, plugins |
 | **Claim Service Swagger** | http://localhost:8080/docs | None | Test the API interactively |
 | **Claim Service 2 Swagger** | http://localhost:8081/docs | None | Second instance (LB demo) |
 | **APISIX Prometheus metrics** | http://localhost:9091/apisix/prometheus/metrics | None | Raw metrics (requests, status codes per route) |
@@ -581,17 +581,17 @@ curl -s -X POST http://localhost:9080/api/v1/claims \
 ### Watch a claim travel through the pipeline
 ```bash
 # Terminal 1 — claim-events (what was published)
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic claim-events \
   --from-beginning --property print.key=true
 
 # Terminal 2 — eligibility results
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic eligibility-results \
   --from-beginning
 
 # Terminal 3 — audit log (all decisions)
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic audit-log \
   --from-beginning
 
@@ -601,7 +601,7 @@ docker compose logs -f eligibility-service fraud-service
 
 ### Check a member's remaining policy limit
 ```bash
-docker exec md-redis redis-cli HGETALL member:M1001:policy
+docker exec healthone-redis redis-cli HGETALL member:M1001:policy
 ```
 
 ### Trigger a fraud flag (high amount + daily excess)
@@ -619,13 +619,13 @@ for i in $(seq 1 6); do
 done
 
 # Check fraud-alerts topic
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic fraud-alerts --from-beginning
 ```
 
 ### Reset consumer group offset (replay all claims)
 ```bash
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group eligibility-consumers \
   --topic claim-events \
@@ -634,12 +634,12 @@ docker exec md-kafka kafka-consumer-groups.sh \
 
 ### View top 5 riskiest hospitals
 ```bash
-docker exec md-redis redis-cli ZREVRANGE fraud:hospital:scores 0 4 WITHSCORES
+docker exec healthone-redis redis-cli ZREVRANGE fraud:hospital:scores 0 4 WITHSCORES
 ```
 
 ### Check consumer lag
 ```bash
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 --describe --all-groups
 ```
 

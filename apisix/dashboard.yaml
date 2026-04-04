@@ -12,8 +12,8 @@ conf:
       file_path: /usr/local/apisix-dashboard/logs/error.log
 
 authentication:
-  secret: md-india-dashboard-secret-2026
+  secret: healthone-tpa-dashboard-secret-2026
   expire_time: 3600
   users:
     - username: admin
-      password: mdindiaadmin
+      password: healthonetpaadmin

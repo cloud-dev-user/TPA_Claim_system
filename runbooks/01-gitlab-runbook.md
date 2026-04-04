@@ -16,7 +16,7 @@
 #### 1. Configure Git identity
 ```bash
 git config --global user.name  "Your Name"
-git config --global user.email "you@mdindia.com"
+git config --global user.email "you@healthonetpa.com"
 git config --global core.editor "nano"   # or vim / code --wait
 
 # Verify
@@ -36,7 +36,7 @@ Create `claim.py` (copy from `Training_code/claim-service/app/claim.py`) and add
 ```python
 # claim.py
 class ClaimSubmit:
-    """Stub — MD India claim submission model"""
+    """Stub — HealthOne TPA claim submission model"""
     pass
 ```
 
@@ -75,13 +75,13 @@ Local repo with 2 commits. Run `git log --oneline` and see both commits.
 #### 1. Sign up to GitLab
 1. Go to https://gitlab.com
 2. Sign up with your work email
-3. Create a **Group**: `md-india-claims`  
+3. Create a **Group**: `healthone-tpa-claims`  
    - Visibility: Private
 
 #### 2. Set up SSH key
 ```bash
 # Generate SSH key (skip if you already have one)
-ssh-keygen -t ed25519 -C "you@mdindia.com"
+ssh-keygen -t ed25519 -C "you@healthonetpa.com"
 cat ~/.ssh/id_ed25519.pub   # copy this
 
 # In GitLab: Profile → SSH Keys → Add new key → paste
@@ -91,11 +91,11 @@ ssh -T git@gitlab.com
 ```
 
 #### 3. Create `claim-service` repository
-In GitLab: `md-india-claims` group → New Project → `claim-service` → Private
+In GitLab: `healthone-tpa-claims` group → New Project → `claim-service` → Private
 
 ```bash
 cd claims-project
-git remote add origin git@gitlab.com:md-india-claims/claim-service.git
+git remote add origin git@gitlab.com:healthone-tpa-claims/claim-service.git
 git branch -M main
 git push -u origin main
 
@@ -116,7 +116,7 @@ Expand `claim.py` with the `ClaimValidator` class (from `Training_code/claim-ser
 
 ```bash
 git add claim.py
-git commit -m "feat: add ClaimValidator with MD India business rules"
+git commit -m "feat: add ClaimValidator with HealthOne TPA business rules"
 git push -u origin feature/claim-api
 ```
 

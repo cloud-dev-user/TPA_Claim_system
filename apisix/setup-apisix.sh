@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-#  MD India APISIX Setup Script
+#  HealthOne TPA APISIX Setup Script
 #  Configures: Upstream, Routes, Consumers, Rate Limits, Prometheus, TLS
 #
 #  Run AFTER: docker-compose up (wait for APISIX to be healthy)
@@ -41,7 +41,7 @@ wait_for_apisix() {
 # 0. TLS — Upload certificate to APISIX
 # ──────────────────────────────────────────────────────────────────────────────
 setup_ssl() {
-  info "Uploading TLS certificate to APISIX (SNI: localhost, mdindia.local)..."
+  info "Uploading TLS certificate to APISIX (SNI: localhost, healthonetpa.local)..."
 
   CERT_FILE="./certs/server.crt"
   KEY_FILE="./certs/server.key"
@@ -59,10 +59,10 @@ setup_ssl() {
     -d "{
       \"cert\": ${CERT_JSON},
       \"key\":  ${KEY_JSON},
-      \"snis\": [\"localhost\", \"mdindia.local\", \"127.0.0.1\"]
+      \"snis\": [\"localhost\", \"healthonetpa.local\", \"127.0.0.1\"]
     }" > /dev/null
 
-  ok "TLS certificate registered (valid for localhost, mdindia.local)"
+  ok "TLS certificate registered (valid for localhost, healthonetpa.local)"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ setup_upstream() {
     -d '{
       "id": "claim-service-upstream",
       "name": "claim-service",
-      "desc": "MD India claim submission service — 2 instances for load balancing",
+      "desc": "HealthOne TPA claim submission service — 2 instances for load balancing",
       "type": "roundrobin",
       "nodes": {
         "claim-service-1:8080": 1,
@@ -356,7 +356,7 @@ print_test_commands() {
   echo "════════════════════════════════════════════════════════════════"
   echo "  API Gateway:   https://localhost:9443/api/v1/claims"
   echo "  Swagger UI:    https://localhost:9443/swagger-ui/"
-  echo "  Grafana:       https://localhost:9443/grafana/        (admin / mdindia2026)"
+  echo "  Grafana:       https://localhost:9443/grafana/        (admin / healthonetpa2026)"
   echo "  Kafka UI:      https://localhost:9443/kafka-ui/"
   echo "  Prometheus:    https://localhost:9443/prometheus/"
   echo "  RedisInsight:  https://localhost:9443/redisinsight/"

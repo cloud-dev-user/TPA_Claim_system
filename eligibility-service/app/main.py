@@ -1,5 +1,5 @@
 """
-MD India Eligibility Service — Kafka consumer loop.
+HealthOne TPA Eligibility Service — Kafka consumer loop.
 
 Consumer group: eligibility-consumers
 Input topic:    claim-events

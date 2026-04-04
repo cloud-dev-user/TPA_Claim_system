@@ -108,7 +108,7 @@ class ClaimValidator:
     Deliberately raises NO exceptions — callers check the bool.
     """
 
-    # MD India business rules
+    # HealthOne TPA business rules
     MAX_AMOUNT: float = 10_000_000   # ₹1 crore
     MIN_AMOUNT: float = 100          # ₹100
     VALID_CLAIM_TYPES = frozenset(ct.value for ct in ClaimType)

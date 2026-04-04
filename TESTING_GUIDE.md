@@ -1,4 +1,4 @@
-# MD India Claims Pipeline — Testing Guide
+# HealthOne TPA Claims Pipeline — Testing Guide
 
 > Everything a developer needs to test this project:  
 > unit tests, manual API tests, Kafka tests, Redis tests, and end-to-end pipeline verification.
@@ -212,7 +212,7 @@ over-zealous before we test each failure case.
 | `test_member_id_too_short` | `"M1"` | Rejected — too short |
 | `test_member_id_empty` | `""` | Rejected |
 
-**Rule:** MD India member IDs always start with `M` and are at least 5 characters
+**Rule:** HealthOne TPA member IDs always start with `M` and are at least 5 characters
 (`M` + 4 digit number). Anything else is not a valid member in the system.
 
 #### Amount boundary tests
@@ -234,7 +234,7 @@ ok, errors = validator.validate(valid_claim)
 assert any("claim_type" in e for e in errors)
 ```
 **Why:** Only `cashless` and `reimbursement` are valid types.
-`emergency` is not a valid claim type in MD India's system — it's a hospital admission
+`emergency` is not a valid claim type in HealthOne TPA's system — it's a hospital admission
 category, not a claim category.
 
 #### `test_multiple_errors_returned_at_once`
@@ -702,7 +702,7 @@ docker compose logs claim-service-2 | tail -5
 ### Verify topics exist
 
 ```bash
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 --list
 # Expected output:
 # audit-log
@@ -715,7 +715,7 @@ docker exec md-kafka kafka-topics.sh \
 
 ```bash
 # claim-events should have 3 partitions and 7-day retention
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe --topic claim-events
 # Look for: PartitionCount: 3  RetentionMs: 604800000
@@ -725,7 +725,7 @@ docker exec md-kafka kafka-topics.sh \
 
 ```bash
 # Terminal 1 — start consumer first
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -734,7 +734,7 @@ docker exec -it md-kafka kafka-console-consumer.sh \
 
 # Terminal 2 — publish a keyed message
 echo 'StarHealth:{"claim_id":"CTEST001","insurer":"StarHealth","amount":50000}' | \
-  docker exec -i md-kafka kafka-console-producer.sh \
+  docker exec -i healthone-kafka kafka-console-producer.sh \
     --bootstrap-server localhost:9092 \
     --topic claim-events \
     --property parse.key=true \
@@ -748,7 +748,7 @@ echo 'StarHealth:{"claim_id":"CTEST001","insurer":"StarHealth","amount":50000}' 
 ```bash
 # Submit 6 claims — 3 StarHealth, 2 HDFCErgo, 1 ICICILombard
 # Then consume with partition info
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -764,7 +764,7 @@ docker exec md-kafka kafka-console-consumer.sh \
 
 ```bash
 # After submitting some claims:
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --describe --group eligibility-consumers
 
@@ -777,7 +777,7 @@ docker exec md-kafka kafka-consumer-groups.sh \
 
 ```bash
 # Start a new consumer group — reads ALL historical messages from the start
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -786,7 +786,7 @@ docker exec -it md-kafka kafka-console-consumer.sh \
   --timeout-ms 10000 2>/dev/null
 
 # Count how many claims per insurer in history:
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -812,7 +812,7 @@ for k,v in sorted(counts.items()): print(f'{k}: {v} claims')
 ### Verify seed data loaded correctly
 
 ```bash
-docker exec md-redis redis-cli HGETALL member:M1001:policy
+docker exec healthone-redis redis-cli HGETALL member:M1001:policy
 # Expected:
 # name       Anita Sharma
 # plan       Gold Family Floater
@@ -821,10 +821,10 @@ docker exec md-redis redis-cli HGETALL member:M1001:policy
 # renewal    2027-03-31
 # insurer    StarHealth
 
-docker exec md-redis redis-cli SMEMBERS empanelled:mumbai
+docker exec healthone-redis redis-cli SMEMBERS empanelled:mumbai
 # Expected: Apollo Fortis Kokilaben Max Lilavati Breach_Candy
 
-docker exec md-redis redis-cli ZREVRANGE fraud:hospital:scores 0 -1 WITHSCORES
+docker exec healthone-redis redis-cli ZREVRANGE fraud:hospital:scores 0 -1 WITHSCORES
 # Expected: H5501-Apollo 5  H5502-Fortis 2  H5503-Kokilaben 0
 ```
 
@@ -832,21 +832,21 @@ docker exec md-redis redis-cli ZREVRANGE fraud:hospital:scores 0 -1 WITHSCORES
 
 ```bash
 # Should return 1 (empanelled)
-docker exec md-redis redis-cli SISMEMBER empanelled:mumbai Apollo
+docker exec healthone-redis redis-cli SISMEMBER empanelled:mumbai Apollo
 # Should return 0 (not empanelled)
-docker exec md-redis redis-cli SISMEMBER empanelled:mumbai UnknownClinic
+docker exec healthone-redis redis-cli SISMEMBER empanelled:mumbai UnknownClinic
 # Non-existent city — empty set = not empanelled
-docker exec md-redis redis-cli SISMEMBER empanelled:patna Apollo
+docker exec healthone-redis redis-cli SISMEMBER empanelled:patna Apollo
 ```
 
 ### Policy cache TTL test
 
 ```bash
 # Check remaining TTL on a policy (should be close to 900 seconds after seeding)
-docker exec md-redis redis-cli TTL member:M1001:policy
+docker exec healthone-redis redis-cli TTL member:M1001:policy
 
 # Manually expire it to simulate cache miss
-docker exec md-redis redis-cli EXPIRE member:M1001:policy 1
+docker exec healthone-redis redis-cli EXPIRE member:M1001:policy 1
 sleep 2
 
 # Submit a claim — eligibility service will see a cache miss
@@ -858,7 +858,7 @@ docker compose logs eligibility-service | tail -10
 
 ```bash
 # Record current used amount
-docker exec md-redis redis-cli HGET member:M1001:policy used
+docker exec healthone-redis redis-cli HGET member:M1001:policy used
 # e.g. 230000
 
 # Submit a claim for ₹50,000
@@ -872,7 +872,7 @@ curl -s -X POST http://localhost:8080/api/v1/claims \
 sleep 3
 
 # Check used amount increased by 50000
-docker exec md-redis redis-cli HGET member:M1001:policy used
+docker exec healthone-redis redis-cli HGET member:M1001:policy used
 # Expected: 280000 (230000 + 50000)
 ```
 
@@ -880,7 +880,7 @@ docker exec md-redis redis-cli HGET member:M1001:policy used
 
 ```bash
 # Record current score for Apollo
-docker exec md-redis redis-cli ZSCORE fraud:hospital:scores H5501-Apollo
+docker exec healthone-redis redis-cli ZSCORE fraud:hospital:scores H5501-Apollo
 
 # Submit several claims for Apollo
 for i in $(seq 1 3); do
@@ -893,14 +893,14 @@ done
 sleep 3
 
 # Score should have increased
-docker exec md-redis redis-cli ZSCORE fraud:hospital:scores H5501-Apollo
+docker exec healthone-redis redis-cli ZSCORE fraud:hospital:scores H5501-Apollo
 ```
 
 ### Persistence test (data survives restart)
 
 ```bash
 # Note current values
-USED=$(docker exec md-redis redis-cli HGET member:M1001:policy used)
+USED=$(docker exec healthone-redis redis-cli HGET member:M1001:policy used)
 echo "used before restart: $USED"
 
 # Restart Redis
@@ -908,7 +908,7 @@ docker compose restart redis
 sleep 5
 
 # Check values survived (AOF replay)
-docker exec md-redis redis-cli HGET member:M1001:policy used
+docker exec healthone-redis redis-cli HGET member:M1001:policy used
 # Must match $USED
 ```
 
@@ -922,17 +922,17 @@ This test submits a claim and verifies it travelled through **every** component.
 
 ```bash
 # Terminal 1 — watch eligibility decisions
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic eligibility-results \
   --from-beginning --property print.key=true
 
 # Terminal 2 — watch fraud assessments
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic fraud-alerts \
   --from-beginning --property print.key=true
 
 # Terminal 3 — watch audit log
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 --topic audit-log \
   --from-beginning --property print.key=true
 
@@ -982,7 +982,7 @@ done
 
 ```bash
 # Reset ONLY eligibility-consumers offset, not fraud-consumers
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --group eligibility-consumers \
   --topic claim-events \
@@ -992,7 +992,7 @@ docker exec md-kafka kafka-consumer-groups.sh \
 docker compose restart eligibility-service
 
 # fraud-consumers should NOT be affected — check its lag separately
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --describe --group fraud-consumers
 ```

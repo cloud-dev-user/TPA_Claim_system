@@ -19,17 +19,17 @@
 docker compose ps kafka
 
 # List topics (should show the 4 pre-created topics)
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 --list
 ```
 
 #### 2. Explore broker configuration
 ```bash
-docker exec md-kafka cat /opt/bitnami/kafka/config/server.properties | grep -E "broker.id|log.dirs|listeners|num.partitions"
+docker exec healthone-kafka cat /opt/bitnami/kafka/config/server.properties | grep -E "broker.id|log.dirs|listeners|num.partitions"
 ```
 
-#### 3. Map MD India architecture to Kafka
-| Kafka Role | MD India Component |
+#### 3. Map HealthOne TPA architecture to Kafka
+| Kafka Role | HealthOne TPA Component |
 |-----------|-------------------|
 | Producer | claim-service (submits claim events) |
 | Topic | claim-events |
@@ -46,12 +46,12 @@ docker exec md-kafka cat /opt/bitnami/kafka/config/server.properties | grep -E "
 #### 1. Create the claim-events topic (hands-on — it already exists, delete and recreate)
 ```bash
 # Delete the pre-created topic
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --delete --topic claim-events
 
 # Recreate with 3 partitions
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --create \
   --topic claim-events \
@@ -60,7 +60,7 @@ docker exec md-kafka kafka-topics.sh \
   --config retention.ms=604800000
 
 # Verify
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe \
   --topic claim-events
@@ -76,7 +76,7 @@ Topic: claim-events  PartitionCount: 3  ReplicationFactor: 1
 
 #### 2. Publish a claim event via CLI
 ```bash
-docker exec -it md-kafka kafka-console-producer.sh \
+docker exec -it healthone-kafka kafka-console-producer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --property parse.key=true \
@@ -97,7 +97,7 @@ Press `Ctrl+C` to exit.
 #### 3. Observe partition routing
 ```bash
 # Consume with partition info to see which insurer went to which partition
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -126,7 +126,7 @@ curl -s -X POST http://localhost:8080/api/v1/claims \
 
 Then verify it appeared in Kafka:
 ```bash
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -143,7 +143,7 @@ docker exec md-kafka kafka-console-consumer.sh \
 #### 1. Start the eligibility consumer group
 ```bash
 # Terminal 1 — eligibility consumer
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --group eligibility-consumers \
@@ -154,7 +154,7 @@ docker exec -it md-kafka kafka-console-consumer.sh \
 #### 2. Start the fraud consumer group (separate terminal)
 ```bash
 # Terminal 2 — fraud consumer
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --group fraud-consumers \
@@ -174,7 +174,7 @@ Both Terminal 1 and Terminal 2 should show the new claim — **independent consu
 
 #### 4. Check consumer group offsets and lag
 ```bash
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --describe \
   --group eligibility-consumers
@@ -188,12 +188,12 @@ Output columns explained:
 #### 5. Configure audit-log retention
 ```bash
 # Verify current retention
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe --topic audit-log
 
 # Set to 7 days (604800000 ms)
-docker exec md-kafka kafka-configs.sh \
+docker exec healthone-kafka kafka-configs.sh \
   --bootstrap-server localhost:9092 \
   --alter \
   --entity-type topics \
@@ -201,7 +201,7 @@ docker exec md-kafka kafka-configs.sh \
   --add-config retention.ms=604800000
 
 # Verify change
-docker exec md-kafka kafka-topics.sh \
+docker exec healthone-kafka kafka-topics.sh \
   --bootstrap-server localhost:9092 \
   --describe --topic audit-log
 ```
@@ -211,7 +211,7 @@ docker exec md-kafka kafka-topics.sh \
 ## Day 7 · May 1 · 2 Hours — Delivery Semantics & Replay
 
 ### Theory Summary
-| Semantic | Config | MD India Use Case |
+| Semantic | Config | HealthOne TPA Use Case |
 |---------|--------|------------------|
 | At Most Once | acks=0 | Acceptable for non-critical analytics |
 | At Least Once | acks=1, no idempotence | Default — possible duplicate processing |
@@ -222,7 +222,7 @@ docker exec md-kafka kafka-topics.sh \
 #### 1. Simulate At Least Once (duplicate processing)
 ```bash
 # Start a consumer, process 3 messages, then kill it with Ctrl+C
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --group duplicate-demo \
@@ -230,7 +230,7 @@ docker exec -it md-kafka kafka-console-consumer.sh \
 
 # Do NOT let it commit the offset — kill it after 2 messages with Ctrl+C
 # Restart — it will reprocess messages from the last committed offset
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --group duplicate-demo \
@@ -246,7 +246,7 @@ Observe: messages already processed may appear again.
 #   enable.idempotence=True
 # Submit a claim and verify it appears exactly once in audit-log:
 
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic audit-log \
   --from-beginning \
@@ -255,7 +255,7 @@ docker exec -it md-kafka kafka-console-consumer.sh \
 
 #### 3. Replay — run new rule against historical claims
 ```bash
-docker exec -it md-kafka kafka-console-consumer.sh \
+docker exec -it healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -266,7 +266,7 @@ docker exec -it md-kafka kafka-console-consumer.sh \
 
 #### 4. Compliance audit — count claims per insurer
 ```bash
-docker exec md-kafka kafka-console-consumer.sh \
+docker exec healthone-kafka kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic claim-events \
   --from-beginning \
@@ -278,7 +278,7 @@ docker exec md-kafka kafka-console-consumer.sh \
 
 #### 5. View all consumer groups
 ```bash
-docker exec md-kafka kafka-consumer-groups.sh \
+docker exec healthone-kafka kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092 \
   --list
 ```
@@ -309,7 +309,7 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group <n
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 --reset-offsets --group <name> --topic <name> --to-earliest --execute
 ```
 
-> **Docker prefix:** Prepend all commands with `docker exec md-kafka ` when running from your host.
+> **Docker prefix:** Prepend all commands with `docker exec healthone-kafka ` when running from your host.
 
 ---
 

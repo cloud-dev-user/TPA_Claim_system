@@ -21,7 +21,7 @@ from app.config import config
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Scoring weights — tune these to match MD India risk appetite
+# Scoring weights — tune these to match HealthOne TPA risk appetite
 # ──────────────────────────────────────────────────────────────────────────────
 
 SCORE_HIGH_AMOUNT     = 20   # claim > HIGH_AMOUNT_THRESHOLD

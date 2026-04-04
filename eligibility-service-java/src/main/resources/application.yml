@@ -49,4 +49,4 @@ management:
 
 logging:
   level:
-    com.mdindia: ${LOG_LEVEL:INFO}
+    com.healthonetpa: ${LOG_LEVEL:INFO}

@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 LABEL maintainer="SSK Training <info@ssktraining.com>"
-LABEL description="MD India Claim Service"
+LABEL description="HealthOne TPA Claim Service"
 
 # Non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser

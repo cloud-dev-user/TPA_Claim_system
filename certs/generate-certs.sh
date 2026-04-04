@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generates a self-signed TLS certificate for local HTTPS development.
-# Valid for: localhost, mdindia.local, 127.0.0.1
+# Valid for: localhost, healthonetpa.local, 127.0.0.1
 # Validity:  825 days (~2.25 years)
 set -euo pipefail
 
@@ -18,7 +18,7 @@ x509_extensions    = v3_req
 C  = IN
 ST = Maharashtra
 L  = Mumbai
-O  = MD India
+O  = HealthOne TPA
 CN = localhost
 
 [v3_req]
@@ -28,7 +28,7 @@ extendedKeyUsage = serverAuth
 
 [alt_names]
 DNS.1 = localhost
-DNS.2 = mdindia.local
+DNS.2 = healthonetpa.local
 IP.1  = 127.0.0.1
 CONF
 

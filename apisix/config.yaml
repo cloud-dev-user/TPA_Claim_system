@@ -1,4 +1,4 @@
-# Apache APISIX 3.x configuration for MD India Claims Pipeline
+# Apache APISIX 3.x configuration for HealthOne TPA Claims Pipeline
 
 apisix:
   node_listen: 9080

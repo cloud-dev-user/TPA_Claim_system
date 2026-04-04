@@ -28,9 +28,9 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mdindia}
-    username: ${SPRING_DATASOURCE_USERNAME:mdindia}
-    password: ${SPRING_DATASOURCE_PASSWORD:mdindia2026}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/healthonetpa}
+    username: ${SPRING_DATASOURCE_USERNAME:healthonetpa}
+    password: ${SPRING_DATASOURCE_PASSWORD:healthonetpa2026}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 5
@@ -67,10 +67,10 @@ springdoc:
     operationsSorter: method
     tagsSorter: alpha
   info:
-    title: MD India Claim Service API
+    title: HealthOne TPA Claim Service API
     description: REST API for submitting and tracking insurance claims
     version: 1.0.0
 
 logging:
   level:
-    com.mdindia: ${LOG_LEVEL:INFO}
+    com.healthonetpa: ${LOG_LEVEL:INFO}

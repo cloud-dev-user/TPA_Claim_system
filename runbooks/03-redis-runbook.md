@@ -15,7 +15,7 @@
 
 #### 1. Connect to Redis
 ```bash
-docker exec -it md-redis redis-cli
+docker exec -it healthone-redis redis-cli
 
 # Verify connection
 PING                    # PONG
@@ -215,7 +215,7 @@ ZREVRANGE fraud:hospital:scores 0 4 WITHSCORES
 
 #### 1. Check current persistence config
 ```bash
-docker exec -it md-redis redis-cli
+docker exec -it healthone-redis redis-cli
 
 CONFIG GET save          # RDB schedule: "900 1 300 10 60 10000"
 CONFIG GET appendonly    # should be "yes"
@@ -230,7 +230,7 @@ BGSAVE                   # background save
 LASTSAVE                 # Unix timestamp
 
 # Verify the .rdb file
-docker exec md-redis ls -lh /data/dump.rdb
+docker exec healthone-redis ls -lh /data/dump.rdb
 ```
 
 #### 3. Verify AOF is recording writes
@@ -243,8 +243,8 @@ INCR test:counter
 INCR test:counter
 
 # Check AOF file
-docker exec md-redis ls -lh /data/appendonly.aof
-docker exec md-redis wc -l /data/appendonly.aof  # count write entries
+docker exec healthone-redis ls -lh /data/appendonly.aof
+docker exec healthone-redis wc -l /data/appendonly.aof  # count write entries
 ```
 
 #### 4. Simulate restart — verify data survives
@@ -258,7 +258,7 @@ GET test:counter
 docker compose restart redis
 
 # Reconnect and verify data
-docker exec -it md-redis redis-cli
+docker exec -it healthone-redis redis-cli
 HGETALL member:M1001:policy          # should be intact (AOF replay)
 ZREVRANGE fraud:hospital:scores 0 4 WITHSCORES  # intact
 GET test:counter                     # intact (3)
@@ -275,7 +275,7 @@ GET fraud:member:M1001:claims:${TODAY}   # 1
 # Restart Redis and verify counter survived
 docker compose restart redis
 sleep 5
-docker exec md-redis redis-cli GET fraud:member:M1001:claims:${TODAY}   # still 1
+docker exec healthone-redis redis-cli GET fraud:member:M1001:claims:${TODAY}   # still 1
 ```
 
 #### 6. RDB-only vs AOF — discussion

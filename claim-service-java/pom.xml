@@ -12,11 +12,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.mdindia</groupId>
+    <groupId>com.healthonetpa</groupId>
     <artifactId>claim-service</artifactId>
     <version>1.0.0</version>
     <name>claim-service</name>
-    <description>MD India Claim Submission Service</description>
+    <description>HealthOne TPA Claim Submission Service</description>
 
     <properties>
         <java.version>17</java.version>
