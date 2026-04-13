@@ -17,6 +17,10 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  gitlab_data:
+  gitlab_logs:
+  gitlab_config:
+  consul_data:
 
 services:
 
@@ -399,6 +403,76 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+
+  # ── GitLab CE ─────────────────────────────
+  # Module 1: Version control, CI/CD pipelines, Merge Requests
+  # Access: http://localhost:8929  (first boot takes ~3 min)
+  # Default root password is auto-generated — retrieve with:
+  #   docker exec healthone-gitlab grep 'Password:' /etc/gitlab/initial_root_password
+  gitlab:
+    image: gitlab/gitlab-ce:16.11.0-ce.0
+    container_name: healthone-gitlab
+    networks: [healthone-tpa-net]
+    hostname: "gitlab.healthone.local"
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8929'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        gitlab_rails['time_zone'] = 'Asia/Kolkata'
+        # Disable unused heavy features to reduce memory usage
+        prometheus_monitoring['enable'] = false
+        alertmanager['enable'] = false
+        grafana['enable'] = false
+        gitlab_exporter['enable'] = false
+        sidekiq['max_concurrency'] = 4
+        puma['worker_processes'] = 2
+        puma['min_threads'] = 1
+        puma['max_threads'] = 4
+    ports:
+      - "8929:8929"   # GitLab Web UI (HTTP)
+      - "2222:22"     # GitLab SSH (git push over SSH)
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    shm_size: "256m"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8929/-/readiness"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+
+  # ── Consul ─────────────────────────────────
+  # Module 4 (Day 14): APISIX service discovery demo
+  # UI: http://localhost:8500
+  consul:
+    image: hashicorp/consul:1.18
+    container_name: healthone-consul
+    networks: [healthone-tpa-net]
+    command: >
+      consul agent -dev
+      -node=healthone-consul
+      -bind=0.0.0.0
+      -client=0.0.0.0
+      -datacenter=healthone-dc1
+      -ui
+    ports:
+      - "8500:8500"   # Consul HTTP UI & API
+      - "8600:8600/udp" # Consul DNS
+    volumes:
+      - consul_data:/consul/data
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── Fraud Service ──────────────────────────
   fraud-service:

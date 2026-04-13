@@ -84,7 +84,7 @@ Hospital → APISIX Gateway → Claim Service → Kafka → Eligibility Service
 │                                                                      │
 │  ┌──────────┐    ┌──────────────┐    ┌──────────────────────────┐   │
 │  │ Hospital │───▶│ Apache APISIX│───▶│     Claim Service        │   │
-│  │  System  │    │  (API GW)    │    │  (FastAPI · 2 instances) │   │
+│  │  System  │    │  (API GW)    │    │  (Spring Boot · 2 inst.) │   │
 │  └──────────┘    │              │    └────────────┬─────────────┘   │
 │                  │ · key-auth   │                 │ publish          │
 │  ┌──────────┐    │ · rate limit │                 ▼                  │
@@ -124,9 +124,10 @@ Hospital → APISIX Gateway → Claim Service → Kafka → Eligibility Service
 **What it does:** Receives HTTP POST requests from hospitals (via APISIX), validates the claim, stores initial status in Redis, and publishes a Kafka event.
 
 **Key files:**
-- [claim-service/app/claim.py](claim-service/app/claim.py) — `ClaimSubmit` data model + `ClaimValidator` business rules
-- [claim-service/app/producer.py](claim-service/app/producer.py) — Idempotent Kafka producer
-- [claim-service/app/main.py](claim-service/app/main.py) — FastAPI routes (`POST /api/v1/claims`, `GET /api/v1/claims/{id}`, `/health`, `/ready`)
+- [claim-service-java/src/main/java/com/healthonetpa/claim/model/ClaimSubmit.java](claim-service-java/src/main/java/com/healthonetpa/claim/model/ClaimSubmit.java) — `ClaimSubmit` request model
+- [claim-service-java/src/main/java/com/healthonetpa/claim/service/ClaimValidator.java](claim-service-java/src/main/java/com/healthonetpa/claim/service/ClaimValidator.java) — Business rule validation
+- [claim-service-java/src/main/java/com/healthonetpa/claim/kafka/ClaimEventProducer.java](claim-service-java/src/main/java/com/healthonetpa/claim/kafka/ClaimEventProducer.java) — Idempotent Kafka producer
+- [claim-service-java/src/main/java/com/healthonetpa/claim/controller/ClaimController.java](claim-service-java/src/main/java/com/healthonetpa/claim/controller/ClaimController.java) — REST endpoints (`POST /api/v1/claims`, `GET /api/v1/claims/{id}`, `/health`)
 
 **Why two instances?** To demonstrate APISIX load balancing. Both connect to the same Kafka and Redis.
 
@@ -138,8 +139,8 @@ Hospital → APISIX Gateway → Claim Service → Kafka → Eligibility Service
 **What it does:** Kafka consumer that reads `claim-events`, checks Redis for member policy, verifies remaining limit, deducts the claim amount, and publishes to `eligibility-results` and `audit-log`.
 
 **Key files:**
-- [eligibility-service/app/eligibility.py](eligibility-service/app/eligibility.py) — `EligibilityCheck` class with the business logic
-- [eligibility-service/app/main.py](eligibility-service/app/main.py) — Consumer loop with graceful shutdown
+- [eligibility-service-java/src/main/java/com/healthonetpa/eligibility/service/EligibilityCheckService.java](eligibility-service-java/src/main/java/com/healthonetpa/eligibility/service/EligibilityCheckService.java) — Business logic (empanelment + limit check)
+- [eligibility-service-java/src/main/java/com/healthonetpa/eligibility/kafka/EligibilityConsumer.java](eligibility-service-java/src/main/java/com/healthonetpa/eligibility/kafka/EligibilityConsumer.java) — Kafka consumer with DLQ and graceful shutdown
 
 **Checks performed (in order):**
 1. Is the hospital in `empanelled:{city}` Redis Set? (cashless only)
@@ -153,8 +154,8 @@ Hospital → APISIX Gateway → Claim Service → Kafka → Eligibility Service
 **What it does:** Independent Kafka consumer (different consumer group from eligibility) that reads the same `claim-events` topic and applies fraud heuristics using Redis.
 
 **Key files:**
-- [fraud-service/app/fraud.py](fraud-service/app/fraud.py) — `FraudRule` class with scoring rules
-- [fraud-service/app/main.py](fraud-service/app/main.py) — Consumer loop
+- [fraud-service-java/src/main/java/com/healthonetpa/fraud/service/FraudRuleService.java](fraud-service-java/src/main/java/com/healthonetpa/fraud/service/FraudRuleService.java) — Fraud scoring rules
+- [fraud-service-java/src/main/java/com/healthonetpa/fraud/kafka/FraudConsumer.java](fraud-service-java/src/main/java/com/healthonetpa/fraud/kafka/FraudConsumer.java) — Kafka consumer with DLQ
 
 **Fraud rules applied:**
 
@@ -260,23 +261,23 @@ Step 5 — Audit trail retained
 
 ### ClaimSubmit (the event that travels through the pipeline)
 
-```python
+```json
 {
-  "claim_id":       "C3F9A1B2",          # auto-generated: 'C' + 8 hex chars
-  "member_id":      "M1001",             # must start with 'M', ≥ 5 chars
-  "hospital_id":    "H5501-Apollo",
-  "hospital_name":  "Apollo",            # used for empanelment Set lookup
-  "insurer":        "StarHealth",        # Kafka partition key
-  "amount":         85000.0,             # ₹100 – ₹1,00,00,000
-  "city":           "mumbai",            # lowercased; used for empanelment Set key
-  "claim_type":     "cashless",          # or "reimbursement"
-  "diagnosis_code": "Z51.1",             # ICD-10, ≥ 3 chars
-  "submitted_at":   "2026-04-24T10:30:00+00:00",
+  "claimId":        "C3F9A1B2",
+  "memberId":       "M1001",
+  "hospitalId":     "H5501-Apollo",
+  "hospitalName":   "Apollo",
+  "insurer":        "StarHealth",
+  "amount":         85000.0,
+  "city":           "mumbai",
+  "claimType":      "cashless",
+  "diagnosisCode":  "Z51.1",
+  "submittedAt":    "2026-04-24T10:30:00Z",
   "status":         "SUBMITTED",
-  "admission_date": "2026-04-20",        # optional
-  "discharge_date": "2026-04-24",        # optional
-  "pre_auth_number": null,               # optional
-  "remarks":        null                 # optional
+  "admissionDate":  "2026-04-20",
+  "dischargeDate":  "2026-04-24",
+  "preAuthNumber":  null,
+  "remarks":        null
 }
 ```
 
@@ -345,12 +346,14 @@ This means the eligibility service processes each insurer's claims in the order 
 
 ### Exactly-Once on the producer side
 
-```python
-Producer({
-    "acks": "all",               # wait for all in-sync replicas
-    "enable.idempotence": True,  # broker deduplicates retried messages
-    "retries": 5,
-})
+```yaml
+# claim-service-java/src/main/resources/application.yml
+spring.kafka.producer:
+  acks: all                      # wait for all in-sync replicas
+  retries: 5
+  properties:
+    enable.idempotence: true     # broker deduplicates retried messages
+    compression.type: lz4
 ```
 
 Even if the network drops mid-publish and the producer retries, Kafka won't write the same message twice.
@@ -395,51 +398,58 @@ Hospital request
 ```
 Training_code/
 │
-├── docker-compose.yml          ← Full local stack definition
-├── Makefile                    ← Developer shortcuts (make up, make test-all, etc.)
+├── docker-compose.yml              ← Full local stack definition
+├── Makefile                        ← Developer shortcuts (make up, make test-all, etc.)
 │
-├── claim-service/
-│   ├── app/
-│   │   ├── claim.py            ← ClaimSubmit model + ClaimValidator rules
-│   │   ├── producer.py         ← Idempotent Kafka producer
-│   │   ├── main.py             ← FastAPI app (REST endpoints)
-│   │   └── config.py           ← Environment variable config
-│   ├── tests/
-│   │   └── test_claim.py       ← Unit tests (no infra needed)
-│   ├── .gitlab-ci.yml          ← CI pipeline (lint + test)
-│   ├── Dockerfile
-│   └── requirements.txt
+├── claim-service-java/             ← Spring Boot 3.2 · Java 17
+│   ├── src/main/java/com/healthonetpa/claim/
+│   │   ├── controller/             ← REST endpoints (POST/GET /api/v1/claims, /health)
+│   │   ├── kafka/                  ← Idempotent Kafka producer
+│   │   ├── model/                  ← ClaimSubmit, ClaimEntity, ClaimResponse, ClaimStatus
+│   │   ├── repository/             ← JPA repository → PostgreSQL
+│   │   └── service/                ← ClaimValidator business rules
+│   ├── src/main/resources/
+│   │   └── application.yml         ← Config (Kafka, Redis, DB, Actuator, Swagger)
+│   ├── Dockerfile                  ← Multi-stage build (Maven → JRE Alpine)
+│   └── pom.xml
 │
-├── eligibility-service/
-│   ├── app/
-│   │   ├── eligibility.py      ← EligibilityCheck business logic
-│   │   ├── main.py             ← Kafka consumer loop
-│   │   └── config.py
-│   ├── tests/
-│   │   └── test_eligibility.py ← Unit tests (Redis mocked)
+├── eligibility-service-java/       ← Spring Boot 3.2 · Java 17
+│   ├── src/main/java/com/healthonetpa/eligibility/
+│   │   ├── kafka/                  ← Kafka consumer + DLQ error handler
+│   │   ├── model/                  ← EligibilityResult
+│   │   └── service/                ← EligibilityCheckService (empanelment + limit check)
+│   ├── src/main/resources/application.yml
 │   ├── Dockerfile
-│   └── requirements.txt
+│   └── pom.xml
 │
-├── fraud-service/
-│   ├── app/
-│   │   ├── fraud.py            ← FraudRule scoring logic
-│   │   ├── main.py             ← Kafka consumer loop
-│   │   └── config.py
-│   ├── tests/
-│   │   └── test_fraud.py       ← Unit tests (Redis mocked)
+├── fraud-service-java/             ← Spring Boot 3.2 · Java 17
+│   ├── src/main/java/com/healthonetpa/fraud/
+│   │   ├── kafka/                  ← Kafka consumer + DLQ error handler
+│   │   ├── model/                  ← FraudAssessment
+│   │   └── service/                ← FraudRuleService (scoring rules)
+│   ├── src/main/resources/application.yml
 │   ├── Dockerfile
-│   └── requirements.txt
+│   └── pom.xml
 │
 ├── apisix/
-│   ├── config.yaml             ← APISIX runtime config
-│   ├── dashboard.yaml          ← APISIX Dashboard config
-│   └── setup-apisix.sh         ← Configures routes/consumers via Admin API
+│   ├── config.yaml                 ← APISIX runtime config
+│   ├── dashboard.yaml              ← APISIX Dashboard config
+│   └── setup-apisix.sh             ← Configures routes/consumers via Admin API
+│
+├── certs/
+│   ├── generate-certs.sh           ← Generates self-signed TLS cert (SAN: localhost)
+│   └── server.crt / server.key     ← Generated locally — NOT committed (in .gitignore)
+│
+├── prometheus/prometheus.yml       ← Scrape config for all 4 services
+├── grafana/provisioning/           ← Auto-provisioned Prometheus datasource
 │
 └── runbooks/
-    ├── 00-prerequisites.md     ← Setup guide (start here)
-    ├── 01-gitlab-runbook.md    ← GitLab module lab guide
-    ├── 02-kafka-runbook.md     ← Kafka module lab guide
-    └── 03-redis-runbook.md     ← Redis module lab guide
+    ├── 00-prerequisites.md         ← Setup guide (start here)
+    ├── 01-gitlab-runbook.md        ← GitLab module lab guide
+    ├── 02-kafka-runbook.md         ← Kafka module lab guide
+    ├── 03-redis-runbook.md         ← Redis module lab guide
+    ├── WINDOWS_SETUP_RUNBOOK.md    ← Step-by-step Windows setup guide
+    └── TROUBLESHOOTING_GUIDE.md    ← All known issues & resolutions
 ```
 
 ---
@@ -448,7 +458,8 @@ Training_code/
 
 ### Prerequisites
 - Docker Desktop ≥ 4.25 (with WSL 2 on Windows)
-- Python 3.12 (for running tests locally without Docker)
+- Java 17 JDK (for running tests locally without Docker)
+- Maven 3.9+ (for building and testing)
 - Git 2.x
 - curl
 
@@ -489,20 +500,20 @@ curl -s -X POST http://localhost:9080/api/v1/claims \
     "hospital_name":"Apollo", "insurer":"StarHealth",
     "amount":85000, "city":"mumbai",
     "claim_type":"cashless", "diagnosis_code":"Z51.1"
-  }' | python -m json.tool
+  }' | python3 -m json.tool
 ```
 
 ---
 
 ## 12. Running Tests
 
-Tests are **unit tests only** — no Docker or running services needed.
+Tests are **unit tests only** — no Docker or running services needed. Requires Java 17 and Maven.
 
 ```bash
 # Run all tests across all services
-cd claim-service     && pip install -r requirements.txt && pytest tests/ -v
-cd eligibility-service && pip install -r requirements.txt && pytest tests/ -v
-cd fraud-service     && pip install -r requirements.txt && pytest tests/ -v
+cd claim-service-java     && mvn test
+cd eligibility-service-java && mvn test
+cd fraud-service-java     && mvn test
 ```
 
 Or using the Makefile shortcut:
@@ -511,11 +522,11 @@ make test-all
 ```
 
 **What is tested:**
-- `test_claim.py` — ClaimSubmit model, ClaimValidator business rules (16 tests)
-- `test_eligibility.py` — EligibilityCheck logic with mocked Redis (8 tests)
-- `test_fraud.py` — FraudRule scoring with mocked Redis (11 tests)
+- `claim-service-java` — ClaimSubmit model, ClaimValidator business rules (JUnit 5)
+- `eligibility-service-java` — EligibilityCheckService logic with mocked Redis (Mockito)
+- `fraud-service-java` — FraudRuleService scoring with mocked Redis (Mockito)
 
-**Redis and Kafka are mocked** in tests — `unittest.mock.MagicMock()` replaces the Redis client. This means tests run in under 2 seconds with zero infrastructure.
+**Redis and Kafka are mocked** in tests using Mockito. Tests run in under 5 seconds with zero infrastructure.
 
 ---
 
@@ -615,7 +626,7 @@ for i in $(seq 1 6); do
          \"hospital_name\":\"Apollo\",\"insurer\":\"StarHealth\",
          \"amount\":600000,\"city\":\"mumbai\",
          \"claim_type\":\"cashless\",\"diagnosis_code\":\"Z51.1\"}" \
-    | python -m json.tool
+    | python3 -m json.tool
 done
 
 # Check fraud-alerts topic

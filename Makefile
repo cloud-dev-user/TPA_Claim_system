@@ -2,7 +2,7 @@
 #  HealthOne TPA Claims Pipeline — Local Development Makefile
 # ──────────────────────────────────────────────────────────────────────────────
 
-.PHONY: help up down build test logs status clean setup-apisix kafka-topics redis-seed
+.PHONY: help up down build test logs status clean setup-apisix kafka-topics redis-seed gitlab-password consul-register
 
 COMPOSE = docker-compose
 KAFKA   = docker exec healthone-kafka kafka-topics.sh --bootstrap-server localhost:9092
@@ -114,19 +114,16 @@ redis-flush: ## DANGEROUS: flush all Redis data
 
 # ── Testing ────────────────────────────────────────────────────────────────────
 
-test-claim: ## Run claim-service unit tests
-	cd claim-service && pip install -q -r requirements.txt && \
-	  pytest tests/ -v --tb=short
+test-claim: ## Run claim-service unit tests (Maven)
+	cd claim-service-java && mvn test -q
 
-test-eligibility: ## Run eligibility-service unit tests
-	cd eligibility-service && pip install -q -r requirements.txt && \
-	  pytest tests/ -v --tb=short
+test-eligibility: ## Run eligibility-service unit tests (Maven)
+	cd eligibility-service-java && mvn test -q
 
-test-fraud: ## Run fraud-service unit tests
-	cd fraud-service && pip install -q -r requirements.txt && \
-	  pytest tests/ -v --tb=short
+test-fraud: ## Run fraud-service unit tests (Maven)
+	cd fraud-service-java && mvn test -q
 
-test-all: test-claim test-eligibility test-fraud ## Run all unit tests
+test-all: test-claim test-eligibility test-fraud ## Run all unit tests across all services
 
 # ── End-to-end test ────────────────────────────────────────────────────────────
 
@@ -135,12 +132,34 @@ e2e-test: ## Send a test claim through the full pipeline via APISIX
 	curl -s -X POST http://localhost:9080/api/v1/claims \
 	  -H "apikey: APOLLO-KEY-2026" \
 	  -H "Content-Type: application/json" \
-	  -d '{"member_id":"M1001","hospital_id":"H5501-Apollo","hospital_name":"Apollo","insurer":"StarHealth","amount":85000,"city":"mumbai","claim_type":"cashless","diagnosis_code":"Z51.1"}' \
-	  | python -m json.tool
+	  -d '{"memberId":"M1001","hospitalId":"H5501-Apollo","hospitalName":"Apollo","insurer":"StarHealth","amount":85000,"city":"mumbai","claimType":"cashless","diagnosisCode":"Z51.1"}' \
+	  | python3 -m json.tool
 
-# ── Linting ────────────────────────────────────────────────────────────────────
+# ── GitLab operations ─────────────────────────────────────────────────────────
 
-lint: ## Run flake8 on all services
-	cd claim-service     && flake8 app/ tests/ --max-line-length=100 --extend-ignore=E203,W503
-	cd eligibility-service && flake8 app/ tests/ --max-line-length=100 --extend-ignore=E203,W503
-	cd fraud-service     && flake8 app/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+gitlab-password: ## Get the auto-generated GitLab root password (run once after first boot)
+	docker exec healthone-gitlab grep 'Password:' /etc/gitlab/initial_root_password
+
+gitlab-logs: ## Tail GitLab logs
+	$(COMPOSE) logs -f --tail=100 gitlab
+
+# ── Consul operations ──────────────────────────────────────────────────────────
+
+consul-register: ## Register claim-service instances in Consul (for APISIX discovery demo)
+	curl -s -X PUT http://localhost:8500/v1/agent/service/register \
+	  -H 'Content-Type: application/json' \
+	  -d '{"ID":"claim-service-1","Name":"claim-service","Address":"claim-service-1","Port":8080,"Tags":["healthone"]}'
+	curl -s -X PUT http://localhost:8500/v1/agent/service/register \
+	  -H 'Content-Type: application/json' \
+	  -d '{"ID":"claim-service-2","Name":"claim-service","Address":"claim-service-2","Port":8081,"Tags":["healthone"]}'
+	@echo "Services registered. View at http://localhost:8500/ui"
+
+consul-services: ## List all services registered in Consul
+	curl -s http://localhost:8500/v1/catalog/services | python3 -m json.tool
+
+# ── Build ──────────────────────────────────────────────────────────────────────
+
+build-services: ## Build all Spring Boot JARs (without running tests)
+	cd claim-service-java     && mvn package -DskipTests -q
+	cd eligibility-service-java && mvn package -DskipTests -q
+	cd fraud-service-java     && mvn package -DskipTests -q

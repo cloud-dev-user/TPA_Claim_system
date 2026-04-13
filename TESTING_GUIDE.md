@@ -38,7 +38,7 @@ This project uses **three layers of testing**:
 ├─────────────────────────────────────────────────────┤
 │  Layer 1 — Unit Tests  ← Start here                 │
 │  No Docker needed. Fast. Run on every code change.   │
-│  pytest with mocked Redis and Kafka                  │
+│  JUnit 5 + Mockito (Maven)                          │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -52,39 +52,29 @@ This project uses **three layers of testing**:
 
 ## 2. Unit Tests — Quick Start
 
-### Install dependencies (once per service)
+### Prerequisites (once per machine)
+
+Requires **Java 17 JDK** and **Maven 3.9+**.
 
 ```bash
-# Claim Service
-cd claim-service
-pip install -r requirements.txt
-
-# Eligibility Service
-cd eligibility-service
-pip install -r requirements.txt
-
-# Fraud Service
-cd fraud-service
-pip install -r requirements.txt
+java -version   # Expected: openjdk 17.x
+mvn -version    # Expected: Apache Maven 3.9.x
 ```
 
 ### Run all tests
 
 ```bash
 # From each service directory:
-pytest tests/ -v
+cd claim-service-java && mvn test
 
-# With short traceback on failure:
-pytest tests/ -v --tb=short
+# Skip tests when building (faster Docker build):
+mvn package -DskipTests
 
-# Stop on first failure:
-pytest tests/ -v -x
+# Run a specific test class:
+mvn test -Dtest=ClaimValidatorTest
 
-# Run a specific test file:
-pytest tests/test_claim.py -v
-
-# Run a specific test by name:
-pytest tests/test_claim.py::TestClaimValidator::test_amount_below_minimum_rejected -v
+# Run a specific test method:
+mvn test -Dtest=ClaimValidatorTest#testAmountBelowMinimumRejected
 
 # Run all services at once (from Training_code/ root):
 make test-all
@@ -93,190 +83,194 @@ make test-all
 ### Expected output — all passing
 
 ```
-claim-service/
-  tests/test_claim.py::TestClaimSubmit::test_claim_id_auto_generated        PASSED
-  tests/test_claim.py::TestClaimSubmit::test_default_status_is_submitted     PASSED
-  tests/test_claim.py::TestClaimSubmit::test_submitted_at_is_set             PASSED
-  tests/test_claim.py::TestClaimSubmit::test_to_dict_round_trip              PASSED
-  tests/test_claim.py::TestClaimSubmit::test_to_dict_contains_all_required_keys PASSED
-  tests/test_claim.py::TestClaimSubmit::test_two_claims_have_different_ids   PASSED
-  tests/test_claim.py::TestClaimValidator::test_valid_claim_passes           PASSED
-  ... (16 tests total)
+[INFO] --- maven-surefire-plugin --- claim-service-java
+[INFO] Tests run: 16, Failures: 0, Errors: 0, Skipped: 0
 
-eligibility-service/
-  tests/test_eligibility.py::TestEligibilityCheck::test_eligible_cashless_claim PASSED
-  ... (8 tests total)
+[INFO] --- maven-surefire-plugin --- eligibility-service-java
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
 
-fraud-service/
-  tests/test_fraud.py::TestFraudRule::test_normal_claim_is_clear             PASSED
-  ... (11 tests total)
+[INFO] --- maven-surefire-plugin --- fraud-service-java
+[INFO] Tests run: 11, Failures: 0, Errors: 0, Skipped: 0
+
+[INFO] BUILD SUCCESS
 ```
 
 ---
 
 ## 3. Claim Service Tests — Line by Line
 
-**File:** [claim-service/tests/test_claim.py](claim-service/tests/test_claim.py)  
-**What it tests:** `ClaimSubmit` data model and `ClaimValidator` business rules  
-**Infrastructure needed:** None
+**File:** [claim-service-java/src/test/java/com/healthonetpa/claim/](claim-service-java/src/test/java/com/healthonetpa/claim/)  
+**What it tests:** `ClaimSubmit` model, `ClaimValidator` business rules  
+**Infrastructure needed:** None (JUnit 5, no Spring context loaded)
 
-### Fixtures (shared test data)
+### Test setup (shared baseline)
 
-```python
-@pytest.fixture
-def valid_claim() -> ClaimSubmit:
-    # A baseline claim that passes all validation rules.
-    # Tests that expect failure mutate ONE field from this baseline.
-    return ClaimSubmit(
-        member_id="M1001",
-        hospital_id="H5501-Apollo",
-        hospital_name="Apollo Hospital Mumbai",
-        insurer="StarHealth",
-        amount=85000.0,
-        city="mumbai",
-        claim_type="cashless",
-        diagnosis_code="Z51.1",
-    )
+```java
+// ClaimValidatorTest.java
+@ExtendWith(MockitoExtension.class)
+class ClaimValidatorTest {
 
-@pytest.fixture
-def validator() -> ClaimValidator:
-    return ClaimValidator()
+    private ClaimValidator validator = new ClaimValidator();
+
+    private ClaimSubmit validClaim() {
+        // A baseline that passes all rules.
+        // Each failing test changes ONE field from this baseline.
+        return ClaimSubmit.builder()
+            .memberId("M1001")
+            .hospitalId("H5501-Apollo")
+            .hospitalName("Apollo Hospital Mumbai")
+            .insurer("StarHealth")
+            .amount(85000.0)
+            .city("mumbai")
+            .claimType("cashless")
+            .diagnosisCode("Z51.1")
+            .build();
+    }
+}
 ```
 
-> **Pattern used:** One valid baseline fixture. Each failing test mutates exactly one field.
+> **Pattern used:** One valid baseline method. Each failing test modifies exactly one field.
 > This isolates the cause — if a test fails, you know exactly which rule broke.
 
 ---
 
-### TestClaimSubmit — model behaviour
+### Model behaviour tests
 
-#### `test_claim_id_auto_generated`
-```python
-assert valid_claim.claim_id.startswith("C")
-assert len(valid_claim.claim_id) == 9  # 'C' + 8 hex chars
+#### `testClaimIdAutoGenerated`
+```java
+ClaimSubmit claim = validClaim();
+assertThat(claim.getClaimId()).startsWith("C");
+assertThat(claim.getClaimId()).hasSize(9); // 'C' + 8 hex chars
 ```
 **Why:** Every claim needs a unique, predictable ID format (`C` + 8 hex = e.g. `C3F9A1B2`).
-The ID is used as the Redis key and Kafka message key downstream.
+The ID is used as the PostgreSQL PK, Redis key, and Kafka message key downstream.
 
-#### `test_default_status_is_submitted`
-```python
-assert valid_claim.status == ClaimStatus.SUBMITTED
+#### `testDefaultStatusIsSubmitted`
+```java
+assertThat(claim.getStatus()).isEqualTo(ClaimStatus.SUBMITTED);
 ```
 **Why:** A freshly created claim must start as `SUBMITTED` before any processing.
 Other statuses (`ELIGIBLE`, `FRAUD_REVIEW`) are set by downstream services.
 
-#### `test_submitted_at_is_set`
-```python
-assert "T" in valid_claim.submitted_at  # ISO 8601: "2026-04-24T10:30:00+00:00"
-```
-**Why:** The timestamp is written to the audit-log topic. It must be ISO 8601 so downstream
-services can parse it without guessing the format.
-
-#### `test_to_dict_round_trip`
-```python
-d = valid_claim.to_dict()
-restored = ClaimSubmit.from_dict(d)
-assert restored.claim_id == valid_claim.claim_id
-assert restored.amount == valid_claim.amount
-```
-**Why:** The claim is serialised to JSON before being published to Kafka.
-If `to_dict()` loses data or `from_dict()` misreads it, consumers get corrupted events.
-
-#### `test_two_claims_have_different_ids`
-```python
-c1 = ClaimSubmit(...)
-c2 = ClaimSubmit(...)  # identical inputs
-assert c1.claim_id != c2.claim_id
+#### `testTwoClaimsHaveDifferentIds`
+```java
+ClaimSubmit c1 = validClaim();
+ClaimSubmit c2 = validClaim(); // identical inputs
+assertThat(c1.getClaimId()).isNotEqualTo(c2.getClaimId());
 ```
 **Why:** Two hospitals could submit identical claims for the same member.
-Duplicate `claim_id` values would cause Redis key collisions and Kafka offset confusion.
+Duplicate `claimId` values would cause PostgreSQL constraint violations and Kafka offset confusion.
 
 ---
 
-### TestClaimValidator — business rules
+### Business rule tests
 
-#### `test_valid_claim_passes`
-```python
-ok, errors = validator.validate(valid_claim)
-assert ok is True
-assert errors == []
+#### `testValidClaimPasses`
+```java
+ValidationResult result = validator.validate(validClaim());
+assertThat(result.isValid()).isTrue();
+assertThat(result.getErrors()).isEmpty();
 ```
-**Why:** The baseline fixture must pass cleanly — confirms the validator isn't
-over-zealous before we test each failure case.
+**Why:** The baseline must pass cleanly — confirms the validator isn't over-zealous
+before we test each failure case.
 
 #### Member ID tests
 
 | Test | Input | Expected |
 |------|-------|----------|
-| `test_member_id_must_start_with_M` | `"X1001"` | Rejected — `member_id` error |
-| `test_member_id_too_short` | `"M1"` | Rejected — too short |
-| `test_member_id_empty` | `""` | Rejected |
+| `testMemberIdMustStartWithM` | `"X1001"` | Rejected — `memberId` error |
+| `testMemberIdTooShort` | `"M1"` | Rejected — too short |
+| `testMemberIdEmpty` | `""` | Rejected |
 
-**Rule:** HealthOne TPA member IDs always start with `M` and are at least 5 characters
-(`M` + 4 digit number). Anything else is not a valid member in the system.
+**Rule:** HealthOne TPA member IDs always start with `M` and are at least 5 characters.
+Anything else is not a valid member in the system.
 
 #### Amount boundary tests
 
 | Test | Amount | Expected |
 |------|--------|----------|
-| `test_amount_below_minimum_rejected` | `₹50` | Rejected (min is ₹100) |
-| `test_amount_above_maximum_rejected` | `₹1.5 crore` | Rejected (max is ₹1 crore) |
-| `test_amount_at_minimum_accepted` | `₹100` | **Accepted** (boundary — inclusive) |
-| `test_amount_at_maximum_accepted` | `₹1 crore` | **Accepted** (boundary — inclusive) |
+| `testAmountBelowMinimumRejected` | ₹50 | Rejected (min is ₹100) |
+| `testAmountAboveMaximumRejected` | ₹1.5 crore | Rejected (max is ₹1 crore) |
+| `testAmountAtMinimumAccepted` | ₹100 | **Accepted** (boundary — inclusive) |
+| `testAmountAtMaximumAccepted` | ₹1 crore | **Accepted** (boundary — inclusive) |
 
 **Why boundary tests matter:** Off-by-one errors in comparisons (`<` vs `<=`) are the most
 common validator bugs. Testing both sides of each boundary catches them.
 
-#### `test_invalid_claim_type_rejected`
-```python
-valid_claim.claim_type = "emergency"
-ok, errors = validator.validate(valid_claim)
-assert any("claim_type" in e for e in errors)
+#### `testInvalidClaimTypeRejected`
+```java
+ClaimSubmit claim = validClaim();
+claim.setClaimType("emergency");
+ValidationResult result = validator.validate(claim);
+assertThat(result.getErrors()).anyMatch(e -> e.contains("claimType"));
 ```
 **Why:** Only `cashless` and `reimbursement` are valid types.
-`emergency` is not a valid claim type in HealthOne TPA's system — it's a hospital admission
-category, not a claim category.
 
-#### `test_multiple_errors_returned_at_once`
-```python
-bad_claim = ClaimSubmit(
-    member_id="X1",    # bad: wrong prefix + too short
-    hospital_id="",    # bad: empty
-    insurer="",        # bad: empty
-    amount=50,         # bad: below minimum
-    claim_type="wrong",# bad: invalid type
-    diagnosis_code="AB",# bad: too short
-    ...
-)
-ok, errors = validator.validate(bad_claim)
-assert len(errors) >= 5
+#### `testMultipleErrorsReturnedAtOnce`
+```java
+ClaimSubmit bad = ClaimSubmit.builder()
+    .memberId("X1")         // bad: wrong prefix + too short
+    .hospitalId("")          // bad: empty
+    .insurer("")             // bad: empty
+    .amount(50.0)            // bad: below minimum
+    .claimType("wrong")      // bad: invalid type
+    .diagnosisCode("AB")     // bad: too short
+    .build();
+ValidationResult result = validator.validate(bad);
+assertThat(result.getErrors().size()).isGreaterThanOrEqualTo(5);
 ```
-**Why:** The validator must collect ALL errors, not stop at the first one.
-If a hospital submits a bad claim, they need to fix everything in one round-trip,
-not discover one error at a time.
+**Why:** The validator must collect ALL errors. Hospitals need to fix everything in one
+round-trip, not discover one error at a time.
 
-#### `test_wrong_amount_threshold_bug` ← GitLab Session 3 demo test
-```python
-claim = ClaimSubmit(amount=12_000_000, ...)  # ₹1.2 crore
-ok, errors = validator.validate(claim)
-assert ok is False, "BUG: amount above ₹1 crore was accepted"
+#### `testWrongAmountThresholdBug` ← GitLab Session 3 demo test
+```java
+ClaimSubmit claim = validClaim();
+claim.setAmount(12_000_000.0); // ₹1.2 crore — above ₹1 crore limit
+ValidationResult result = validator.validate(claim);
+assertThat(result.isValid()).isFalse(); // would FAIL if MAX_AMOUNT is wrong
 ```
 **Why this test exists:** In GitLab Session 3, participants deliberately introduce a bug
-(changing `MAX_AMOUNT = 10_000_000` to `MAX_AMOUNT = 100`). This test is the one that
-goes **RED** on the GitLab CI pipeline when the bug is present, demonstrating that
-CI catches regressions automatically.
+(changing `MAX_AMOUNT = 10_000_000` to a wrong value). This test goes **RED** on the
+GitLab CI pipeline, demonstrating that CI catches regressions automatically.
 
 ---
 
 ## 4. Eligibility Service Tests — Line by Line
 
-**File:** [eligibility-service/tests/test_eligibility.py](eligibility-service/tests/test_eligibility.py)  
-**What it tests:** `EligibilityCheck` business logic  
-**Infrastructure needed:** None (Redis is mocked)
+**File:** [eligibility-service-java/src/test/java/com/healthonetpa/eligibility/](eligibility-service-java/src/test/java/com/healthonetpa/eligibility/)  
+**What it tests:** `EligibilityCheckService` business logic  
+**Infrastructure needed:** None (Redis is mocked with Mockito)
 
 ### How Redis is mocked
 
-```python
+```java
+@ExtendWith(MockitoExtension.class)
+class EligibilityCheckServiceTest {
+
+    @Mock
+    private StringRedisTemplate redisTemplate;
+
+    @Mock
+    private HashOperations<String, Object, Object> hashOps;
+
+    @Mock
+    private SetOperations<String, String> setOps;
+
+    @InjectMocks
+    private EligibilityCheckService service;
+
+    @BeforeEach
+    void setUp() {
+        // Default: hospital empanelled, policy exists with sufficient limit
+        when(redisTemplate.opsForSet()).thenReturn(setOps);
+        when(redisTemplate.opsForHash()).thenReturn(hashOps);
+        when(setOps.isMember("empanelled:mumbai", "Apollo")).thenReturn(true);
+        when(hashOps.entries("member:M1001:policy")).thenReturn(Map.of(
+            "limit", "1000000", "used", "230000", "plan", "Gold Family Floater"
+        ));
+    }
+}
+```
 @pytest.fixture
 def mock_redis():
     return MagicMock()   # every method returns MagicMock() by default
@@ -310,207 +304,171 @@ mock_redis.hgetall.return_value = {
 }
 mock_redis.hincrbyfloat.return_value = 280000.0
 
-result = checker.check(valid_claim)  # amount=50000
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "cashless", 50000.0));
 
-assert result.eligible is True
-assert result.remaining_limit == 720000.0   # 1000000 - 230000 - 50000
-assert result.policy_plan == "Gold Family Floater"
+assertThat(result.isEligible()).isTrue();
+assertThat(result.getRemainingLimit()).isEqualTo(720000.0); // 1000000 - 230000 - 50000
 ```
 **What this proves:** Given a fully empanelled hospital and a member with sufficient
 coverage, the check approves the claim and returns the correct remaining limit.
 
-#### `test_hospital_not_empanelled` — cashless rejection
-```python
-mock_redis.sismember.return_value = False   # hospital NOT in empanelled set
+#### `testHospitalNotEmpanelled` — cashless rejection
+```java
+when(setOps.isMember("empanelled:mumbai", "Apollo")).thenReturn(false);
 
-result = checker.check(valid_claim)
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "cashless", 50000.0));
 
-assert result.eligible is False
-assert "not empanelled" in result.reason
-mock_redis.hgetall.assert_not_called()   # should NOT even fetch the policy
+assertThat(result.isEligible()).isFalse();
+assertThat(result.getReason()).contains("not empanelled");
+verify(hashOps, never()).entries(anyString()); // must NOT fetch policy
 ```
-**Key assertion:** `hgetall.assert_not_called()` — if the hospital fails empanelment,
+**Key assertion:** `verify(hashOps, never())` — if the hospital fails empanelment,
 the check must **stop immediately** and not waste a Redis call fetching the policy.
-This tests the short-circuit logic in the code.
 
-#### `test_member_policy_not_found`
-```python
-mock_redis.sismember.return_value = True
-mock_redis.hgetall.return_value = {}   # empty dict = key doesn't exist in Redis
+#### `testMemberPolicyNotFound`
+```java
+when(hashOps.entries("member:M1001:policy")).thenReturn(Map.of());
 
-result = checker.check(valid_claim)
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "cashless", 50000.0));
 
-assert result.eligible is False
-assert "No active policy" in result.reason
+assertThat(result.isEligible()).isFalse();
+assertThat(result.getReason()).contains("No active policy");
 ```
 **Why:** A member could have an expired policy (TTL elapsed, not yet refreshed).
-The service must not approve a claim when policy data is absent — fail safe, not fail open.
+The service must fail safe (reject), not fail open.
 
-#### `test_insufficient_limit`
-```python
-mock_redis.hgetall.return_value = {"plan": "Silver", "limit": "100000", "used": "90000"}
-valid_claim["amount"] = 50000   # 50000 > (100000 - 90000 = 10000)
+#### `testInsufficientLimit`
+```java
+when(hashOps.entries("member:M1001:policy"))
+    .thenReturn(Map.of("limit", "100000", "used", "90000"));
 
-result = checker.check(valid_claim)
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "cashless", 50000.0));
 
-assert result.eligible is False
-assert "exceeds" in result.reason
-assert result.remaining_limit == 10000.0   # reports what IS available
+assertThat(result.isEligible()).isFalse();
+assertThat(result.getRemainingLimit()).isEqualTo(10000.0); // reports what IS available
 ```
 **Why:** The remaining limit is included in the rejection reason so the hospital
 knows how much the member can still claim.
 
-#### `test_exact_remaining_limit_is_eligible`
-```python
-mock_redis.hgetall.return_value = {"limit": "100000", "used": "50000"}
-valid_claim["amount"] = 50000   # exactly equal to remaining
+#### `testExactRemainingLimitIsEligible`
+```java
+when(hashOps.entries("member:M1001:policy"))
+    .thenReturn(Map.of("limit", "100000", "used", "50000"));
 
-assert result.eligible is True
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "cashless", 50000.0));
+
+assertThat(result.isEligible()).isTrue(); // boundary: claim == remaining → approve
 ```
 **Why (boundary test):** If the comparison uses `>` instead of `>=`, a claim for
-the exact remaining amount would be wrongly rejected. This catches that off-by-one.
+the exact remaining amount would be wrongly rejected.
 
-#### `test_reimbursement_skips_empanelment_check`
-```python
-valid_claim["claim_type"] = "reimbursement"
+#### `testReimbursementSkipsEmpanelmentCheck`
+```java
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "reimbursement", 50000.0));
 
-result = checker.check(valid_claim)
-
-mock_redis.sismember.assert_not_called()   # empanelment only applies to cashless
-assert result.eligible is True
+verify(setOps, never()).isMember(anyString(), anyString()); // no empanelment check
+assertThat(result.isEligible()).isTrue();
 ```
 **Why:** Reimbursement claims can go to any hospital — the patient paid upfront and
-is claiming back. The empanelment Set is only relevant for cashless (direct billing).
+is claiming back.
 
-#### `test_redis_error_on_policy_fetch` — resilience test
-```python
-mock_redis.hgetall.side_effect = redis.RedisError("connection refused")
+#### `testRedisErrorOnPolicyFetch` — resilience
+```java
+when(hashOps.entries(anyString())).thenThrow(new RedisConnectionFailureException("timeout"));
 
-result = checker.check(valid_claim)
+EligibilityResult result = service.check(buildClaim("M1001", "Apollo", "cashless", 50000.0));
 
-assert result.eligible is False
-assert "Redis error" in result.reason
+assertThat(result.isEligible()).isFalse(); // fail safe, not crash
 ```
-**Why:** Redis going down must not crash the service or approve claims silently.
-It must fail safe (reject) and log the error. `side_effect` makes the mock
-**raise an exception** instead of returning a value.
 
 ---
 
 ## 5. Fraud Service Tests — Line by Line
 
-**File:** [fraud-service/tests/test_fraud.py](fraud-service/tests/test_fraud.py)  
-**What it tests:** `FraudRule` scoring logic  
-**Infrastructure needed:** None (Redis is mocked)
+**File:** [fraud-service-java/src/test/java/com/healthonetpa/fraud/](fraud-service-java/src/test/java/com/healthonetpa/fraud/)  
+**What it tests:** `FraudRuleService` scoring logic  
+**Infrastructure needed:** None (Redis mocked with Mockito)
 
 ### Mock defaults
 
-```python
-@pytest.fixture
-def mock_redis():
-    r = MagicMock()
-    r.incr.return_value = 1      # member's 1st claim today (well under 5 limit)
-    r.zincrby.return_value = 5.0 # hospital score after increment
-    return r
+```java
+@BeforeEach
+void setUp() {
+    // Default: first claim today, no fraud history
+    when(redisTemplate.opsForValue()).thenReturn(valueOps);
+    when(redisTemplate.opsForZSet()).thenReturn(zSetOps);
+    when(valueOps.increment(anyString())).thenReturn(1L); // 1st claim today
+    when(zSetOps.incrementScore(eq("fraud:hospital:scores"), anyString(), anyDouble()))
+        .thenReturn(5.0);
+}
 ```
-
-Default mock simulates a clean state: first claim of the day, no fraud history.
 
 ---
 
 ### Fraud scoring tests
 
-#### `test_normal_claim_is_clear`
-```python
-result = fraud_rule.assess(normal_claim)   # amount=50000, 1st claim today
+#### `testNormalClaimIsClear`
+```java
+FraudAssessment result = service.assess(buildClaim(50000.0)); // ₹50k, 1st claim today
 
-assert result.is_flagged is False
-assert result.risk_score < 50   # below the 50-point flag threshold
+assertThat(result.isFlagged()).isFalse();
+assertThat(result.getRiskScore()).isLessThan(50); // below threshold
 ```
-**Why:** A baseline normal claim must produce a CLEAR verdict with score below the
-threshold. Confirms no false positives on normal activity.
+**Why:** A baseline normal claim must produce CLEAR verdict. Confirms no false positives.
 
-#### `test_high_amount_increases_score`
-```python
-normal_claim["amount"] = 600000   # ₹6 lakh > HIGH_AMOUNT_THRESHOLD (₹5 lakh)
+#### `testHighAmountIncreasesScore`
+```java
+FraudAssessment result = service.assess(buildClaim(600000.0)); // ₹6L > ₹5L threshold
 
-result = fraud_rule.assess(normal_claim)
-
-assert result.risk_score >= 20
-assert any("High claim amount" in r for r in result.reasons)
+assertThat(result.getRiskScore()).isGreaterThanOrEqualTo(20);
+assertThat(result.getReasons()).anyMatch(r -> r.contains("High claim amount"));
 ```
-**Rule 1 verified:** Claims ≥ ₹5,00,000 add 20 points to risk score and include
-an explanatory reason string.
+**Rule 1 verified:** Claims ≥ ₹5,00,000 add 20 points and include a reason string.
 
-#### `test_round_number_increases_score`
-```python
-normal_claim["amount"] = 200000   # exact multiple of ₹1 lakh
+#### `testRoundNumberIncreasesScore`
+```java
+FraudAssessment result = service.assess(buildClaim(200000.0)); // exact ₹2L multiple
 
-assert any("Round-number" in r for r in result.reasons)
+assertThat(result.getReasons()).anyMatch(r -> r.contains("Round-number"));
 ```
-**Rule 2 verified:** Round numbers (₹1L, ₹2L, ₹5L, etc.) are a classic fraud signal —
-fraudulent claims are often inflated to convenient round figures.
+**Rule 2 verified:** Round amounts are a classic fraud signal.
 
-#### `test_daily_limit_excess_increases_score`
-```python
-mock_redis.incr.return_value = 6   # member's 6th claim today (limit is 5)
+#### `testDailyLimitExcessIncreasesScore`
+```java
+when(valueOps.increment(anyString())).thenReturn(6L); // 6th claim today (limit is 5)
 
-result = fraud_rule.assess(normal_claim)
+FraudAssessment result = service.assess(buildClaim(50000.0));
 
-assert any("claims today" in r for r in result.reasons)
+assertThat(result.getReasons()).anyMatch(r -> r.contains("claims today"));
 ```
-**Rule 3 verified:** More than 5 claims by the same member in one day adds 30 points.
-`mock_redis.incr.return_value = 6` simulates Redis returning 6 from `INCR`.
+**Rule 3 verified:** More than 5 claims/day adds 30 points.
 
-#### `test_high_amount_and_daily_excess_flags_claim` — crossing the threshold
-```python
-mock_redis.incr.return_value = 6   # +30 points
-normal_claim["amount"] = 600000    # +20 points
-# Total = 50 = exactly at threshold
+#### `testHighAmountAndDailyExcessFlagsClaim` — crossing the threshold
+```java
+when(valueOps.increment(anyString())).thenReturn(6L); // +30 points
+FraudAssessment result = service.assess(buildClaim(600000.0)); // +20 points = 50 total
 
-assert result.is_flagged is True
-assert result.risk_score >= 50
+assertThat(result.isFlagged()).isTrue();
+assertThat(result.getRiskScore()).isGreaterThanOrEqualTo(50);
 ```
-**Why:** This is the only test that combines two rules to breach the 50-point
-flag threshold. Confirms that `is_flagged = (score >= 50)` logic is correct.
 
-#### `test_hospital_score_updated_on_every_claim`
-```python
-fraud_rule.assess(normal_claim)
+#### `testHospitalScoreUpdatedOnEveryClaim`
+```java
+service.assess(buildClaim(50000.0));
 
-mock_redis.zincrby.assert_called_once()
-call_args = mock_redis.zincrby.call_args
-assert call_args[0][0] == "fraud:hospital:scores"   # correct key
-assert call_args[0][2] == normal_claim["hospital_id"]  # correct hospital
+verify(zSetOps).incrementScore(eq("fraud:hospital:scores"), eq("H5501-Apollo"), anyDouble());
 ```
-**Why:** The hospital Sorted Set must be updated on **every** claim — even clean ones.
-Over time, high-volume hospitals accumulate scores that the ops team monitors daily.
-This test verifies the Redis call happened with the right arguments.
+**Why:** Hospital Sorted Set must update on **every** claim — even clean ones.
 
-#### `test_redis_error_on_incr_does_not_crash`
-```python
-mock_redis.incr.side_effect = redis.RedisError("timeout")
+#### `testRedisErrorOnIncrDoesNotCrash`
+```java
+when(valueOps.increment(anyString())).thenThrow(new RedisConnectionFailureException("timeout"));
 
-result = fraud_rule.assess(normal_claim)
+FraudAssessment result = service.assess(buildClaim(50000.0));
 
-assert isinstance(result, FraudAssessment)   # must still return a result
+assertThat(result).isNotNull(); // must still return a result, not throw
 ```
-**Why:** Redis being slow or down must not crash the fraud service or block claim
-processing. The rule logs the error and continues with a partial score.
-
-#### `test_get_top_risk_hospitals`
-```python
-mock_redis.zrevrange.return_value = [
-    ("H5502-Unknown", 75.0),
-    ("H5501-Apollo",  25.0),
-]
-top = fraud_rule.get_top_risk_hospitals(n=2)
-
-assert top[0][0] == "H5502-Unknown"
-assert top[0][1] == 75.0
-```
-**Why:** The ops dashboard calls `get_top_risk_hospitals()` daily. This verifies
-the Sorted Set query returns results in descending score order (highest risk first).
+**Why:** Redis being slow must not crash or block claim processing.
 
 ---
 
