@@ -410,7 +410,7 @@ services:
   # Default root password is auto-generated — retrieve with:
   #   docker exec healthone-gitlab grep 'Password:' /etc/gitlab/initial_root_password
   gitlab:
-    image: gitlab/gitlab-ce:16.11.0-ce.0
+    image: gitlab/gitlab-ce:18.9.6-ce.0
     container_name: healthone-gitlab
     networks: [healthone-tpa-net]
     hostname: "gitlab.healthone.local"
