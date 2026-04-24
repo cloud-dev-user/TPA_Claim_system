@@ -422,7 +422,6 @@ services:
         # Disable unused heavy features to reduce memory usage
         prometheus_monitoring['enable'] = false
         alertmanager['enable'] = false
-        grafana['enable'] = false
         gitlab_exporter['enable'] = false
         sidekiq['max_concurrency'] = 4
         puma['worker_processes'] = 2
