@@ -311,7 +311,7 @@ services:
       REDIS_PASSWORD: "healthone-tpa-redis-2026"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/healthonetpa"
       SPRING_DATASOURCE_USERNAME: "healthonetpa"
-      SPRING_DATASOURCE_PASSWORD: "healthonetpa2026"
+      SPRING_DATASOURCE_PASSWORD: "xxxxxxxxxxx"
       SERVER_PORT: "8080"
     ports:
       - "8080:8080"
@@ -352,7 +352,7 @@ services:
       REDIS_PASSWORD: "healthone-tpa-redis-2026"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/healthonetpa"
       SPRING_DATASOURCE_USERNAME: "healthonetpa"
-      SPRING_DATASOURCE_PASSWORD: "healthonetpa2026"
+      SPRING_DATASOURCE_PASSWORD: "xxxxxxxxxxxx"
       SERVER_PORT: "8081"
     ports:
       - "8081:8081"
@@ -390,7 +390,7 @@ services:
       KAFKA_OUTPUT_TOPIC: "eligibility-results"
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: "healthone-tpa-redis-2026"
+      REDIS_PASSWORD: "xxxxxxxxxx"
     restart: unless-stopped
     deploy:
       resources:
@@ -421,7 +421,7 @@ services:
       KAFKA_OUTPUT_TOPIC: "fraud-alerts"
       REDIS_HOST: "redis"
       REDIS_PORT: "6379"
-      REDIS_PASSWORD: "healthone-tpa-redis-2026"
+      REDIS_PASSWORD: "xxxxxxxxxxx"
     restart: unless-stopped
     deploy:
       resources:
