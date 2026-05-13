@@ -153,7 +153,7 @@ services:
     environment:
       POSTGRES_DB: healthonetpa
       POSTGRES_USER: healthonetpa
-      POSTGRES_PASSWORD: healthonetpa2026
+      POSTGRES_PASSWORD: xxxxxxxxx
     ports:
       - "5432:5432"
     volumes:
